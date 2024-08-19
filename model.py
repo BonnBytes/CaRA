@@ -76,13 +76,13 @@ class CPLoRA(th.nn.Module):
         S_h = preprocess(S_h).squeeze(-2)
         S_e = preprocess(S_e).squeeze(-2)
         # CP Form forward pass
-        inter_1 = self.relu(input_ @ S_d.swapaxes(-2, -1))  # (rank, bs, patches, heads, 1)
+        inter_1 = input_ @ S_d.swapaxes(-2, -1)  # (rank, bs, patches, heads, 1)
         inter_1 = inter_1.squeeze(-1)  # (rank, bs, patches, heads)
-        inter_2 = self.relu(inter_1 @ S_h.swapaxes(-2, -1))  # (rank, bs, patches, 1)
+        inter_2 = inter_1 @ S_h.swapaxes(-2, -1)  # (rank, bs, patches, 1)
         # output_ = lambdas.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) * (
         #     inter_2 @ S_e
         # )  # (rank, bs, patches, d_model)
-        output_ = self.relu(inter_2 @ S_e)  # (rank, bs, patches, d_model)
+        output_ = inter_2 @ S_e  # (rank, bs, patches, d_model)
         output_ = th.sum(output_, 0)  # (bs, patches, d_model)
         return output_
 
