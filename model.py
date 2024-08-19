@@ -32,14 +32,26 @@ class CPLoRA(th.nn.Module):
         super().__init__()
         head_dim = embed_dim // num_heads
         self.tr_rank = tr_rank
-        self.S_model_ft = th.nn.Parameter(th.randn((embed_dim, tr_rank)), requires_grad=True)
-        self.S_heads_ft = th.nn.Parameter(th.randn((num_heads, tr_rank)), requires_grad=True)
-        self.S_headdim_ft = th.nn.Parameter(th.randn((head_dim, tr_rank)), requires_grad=True)
-        self.lambdas_ft = th.nn.Parameter(th.randn((tr_rank)), requires_grad=True)
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        self.S_model_ft = th.nn.Parameter(th.zeros((embed_dim, tr_rank)), requires_grad=True)
+        self.S_heads_ft = th.nn.Parameter(th.zeros((num_heads, tr_rank)), requires_grad=True)
+        self.S_headdim_ft = th.nn.Parameter(th.zeros((head_dim, tr_rank)), requires_grad=True)
+        # self.lambdas_ft = th.nn.Parameter(th.ones((tr_rank)), requires_grad=True)
+        self.relu = th.nn.ReLU()
     
     def forward(self, x):
-        op2 = self.__thunder_forward((self.lambdas_ft, self.S_model_ft, self.S_heads_ft, self.S_headdim_ft), x)
+        B, N, C = x.shape
+        x = x.reshape((B, N, self.num_heads, self.head_dim))
+        # op2 = self.__thunder_forward((self.lambdas_ft, self.S_model_ft, self.S_heads_ft, self.S_headdim_ft), x)
+        op2 = self.__thunder_forward((self.S_model_ft, self.S_heads_ft, self.S_headdim_ft), x)
         return op2
+        # tensor_ = tl.cp_to_tensor((self.lambdas_ft, (self.S_model_ft, self.S_heads_ft, self.S_headdim_ft)))
+        # op2 = self._tensor_forward(tensor_, x)
+        # return op2.reshape((B, N, C))
+
+    def _tensor_forward(self, tensor, input_):
+        return th.einsum("bne, ehd -> bnhd", (input_, tensor))
 
     def __thunder_forward(
         self, factors: Tuple[th.nn.Parameter, ...], input_: th.Tensor
@@ -53,8 +65,9 @@ class CPLoRA(th.nn.Module):
         Returns:
             th.Tensor: Projected output.
         """
-        assert len(factors) == 4
-        lambdas, S_e, S_h, S_d = factors
+        # assert len(factors) == 4
+        # lambdas, S_e, S_h, S_d = factors
+        S_e, S_h, S_d = factors
         input_ = input_.unsqueeze(0)  # (1, bs, patches, heads, headdim)
         preprocess = (
             lambda x: x.unsqueeze(0).unsqueeze(0).unsqueeze(0).permute([-1, 0, 1, 2, 3])
@@ -63,12 +76,13 @@ class CPLoRA(th.nn.Module):
         S_h = preprocess(S_h).squeeze(-2)
         S_e = preprocess(S_e).squeeze(-2)
         # CP Form forward pass
-        inter_1 = input_ @ S_d.swapaxes(-2, -1)  # (rank, bs, patches, heads, 1)
+        inter_1 = self.relu(input_ @ S_d.swapaxes(-2, -1))  # (rank, bs, patches, heads, 1)
         inter_1 = inter_1.squeeze(-1)  # (rank, bs, patches, heads)
-        inter_2 = inter_1 @ S_h.swapaxes(-2, -1)  # (rank, bs, patches, 1)
-        output_ = lambdas.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) * (
-            inter_2 @ S_e
-        )  # (rank, bs, patches, d_model)
+        inter_2 = self.relu(inter_1 @ S_h.swapaxes(-2, -1))  # (rank, bs, patches, 1)
+        # output_ = lambdas.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) * (
+        #     inter_2 @ S_e
+        # )  # (rank, bs, patches, d_model)
+        output_ = self.relu(inter_2 @ S_e)  # (rank, bs, patches, d_model)
         output_ = th.sum(output_, 0)  # (bs, patches, d_model)
         return output_
 
