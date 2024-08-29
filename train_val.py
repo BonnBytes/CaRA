@@ -26,7 +26,7 @@ def train(model, dl, tdl, opt, scheduler, epoch):
             scheduler.step(ep)
         if ep == 49:
             acc = test(model, tdl)
-            pbar.set_description(f"Accuracy: {str(acc)}")
+            pbar.set_description(f"Accuracy: {str(acc*100)}")
     model = model.cpu()
     return model
 
@@ -51,7 +51,7 @@ def _parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         "--trainable-ranks",
-        default=2,
+        default=10,
         type=int,
 
         help="Number of trainable ranks."
@@ -88,12 +88,7 @@ def main():
         new_mod.bias = mod.bias if b else None
         model.get_submodule(".".join(parent))[int(k)].attn.qkv = new_mod
 
-    for param in model.parameters():
-        param.requires_grad = False
-
-    for name, param in model.named_parameters():
-        if "_ft" in name:
-            param.requires_grad = True
+    
 
     # init_fn = th.nn.init.xavier_normal_
     # init_fn = th.nn.init.xavier_uniform_
@@ -110,8 +105,6 @@ def main():
         dim1 //= 3
         layer_weight = weight.reshape(3, dim1, dim2)
         return layer_weight.unbind(0)
-
-
 
     for name, module in model.named_modules():
         if "qkv" in name and isinstance(module, CPLoraMerged):
@@ -131,6 +124,7 @@ def main():
                 module.CPQ.S_headdim_ft = th.nn.Parameter(headdim_Q) 
                 module.CPK.S_headdim_ft = th.nn.Parameter(headdim_K) 
                 module.CPV.S_headdim_ft = th.nn.Parameter(headdim_V)
+
                 # module.CPQ.lambdas_ft = th.nn.Parameter(lambdas_Q)
                 # module.CPK.lambdas_ft = th.nn.Parameter(lambdas_K)
                 # module.CPV.lambdas_ft = th.nn.Parameter(lambdas_V)
@@ -146,6 +140,7 @@ def main():
                 init_fn(module.CPQ.S_headdim_ft)
                 init_fn(module.CPK.S_headdim_ft)
                 init_fn(module.CPV.S_headdim_ft)
+
                 # th.nn.init.normal_(module.CPQ.lambdas_ft)
                 # th.nn.init.normal_(module.CPK.lambdas_ft)
                 # th.nn.init.normal_(module.CPV.lambdas_ft)
@@ -156,7 +151,12 @@ def main():
             print(th.norm(module.CPK.S_model_ft), th.norm(module.CPK.S_heads_ft), th.norm(module.CPK.S_headdim_ft))
             print(th.norm(module.CPV.S_model_ft), th.norm(module.CPV.S_heads_ft), th.norm(module.CPV.S_headdim_ft))
             print()
+    for param in model.parameters():
+        param.requires_grad = False
 
+    for name, param in model.named_parameters():
+        if "_ft" in name:
+            param.requires_grad = True
     model.reset_classifier(num_classes)
     model = th.nn.DataParallel(model)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -164,12 +164,10 @@ def main():
     print(f"Trainable #Parameters: {trainable_params}M")
 
     opt = th.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
-    # opt = th.optim.SGD(model.parameters(), lr=1e-2, momentum=0.9)
-    # scheduler = CosineLRScheduler(opt, t_initial=100, warmup_t=10, lr_min=1e-5, warmup_lr_init=1e-6)
     scheduler = None
     model = train(model, train_dl, test_dl, opt, scheduler, 100)
     facc = test(model, test_dl)
-    print(f"Final Accuracy: {facc}")
+    print(f"Final Accuracy: {facc*100}")
 
 if __name__ == "__main__":
     main()
