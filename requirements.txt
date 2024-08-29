@@ -1,9 +1,0 @@
-pytest
-numpy==1.26.4
-torch==2.0.0
-torchvision
-tensorly==0.8.1
-loralib
-timm==1.0.7
-tensorboard
-matplotlib
