@@ -112,9 +112,9 @@ def main():
                 decomp = tl.decomposition.CP(rank=args.trainable_ranks, normalize_factors=False, verbose=False, init="random", tol=1e-24, random_state=42)
                 Q_weight, K_weight, V_weight = split_weight(module.weight.data)
                 tensor_fn = lambda x: x.reshape((x.shape[0], 12, x.shape[0]//12))
-                lambdas_Q, (model_Q, heads_Q, headdim_Q) = decomp.fit_transform(tensor_fn(Q_weight))
-                lambdas_K, (model_K, heads_K, headdim_K) = decomp.fit_transform(tensor_fn(K_weight))
-                lambdas_V, (model_V, heads_V, headdim_V) = decomp.fit_transform(tensor_fn(V_weight))
+                _, (model_Q, heads_Q, headdim_Q) = decomp.fit_transform(tensor_fn(Q_weight))
+                _, (model_K, heads_K, headdim_K) = decomp.fit_transform(tensor_fn(K_weight))
+                _, (model_V, heads_V, headdim_V) = decomp.fit_transform(tensor_fn(V_weight))
                 module.CPQ.S_model_ft = th.nn.Parameter(model_Q) 
                 module.CPK.S_model_ft = th.nn.Parameter(model_K) 
                 module.CPV.S_model_ft = th.nn.Parameter(model_V)
@@ -124,11 +124,6 @@ def main():
                 module.CPQ.S_headdim_ft = th.nn.Parameter(headdim_Q) 
                 module.CPK.S_headdim_ft = th.nn.Parameter(headdim_K) 
                 module.CPV.S_headdim_ft = th.nn.Parameter(headdim_V)
-
-                # module.CPQ.lambdas_ft = th.nn.Parameter(lambdas_Q)
-                # module.CPK.lambdas_ft = th.nn.Parameter(lambdas_K)
-                # module.CPV.lambdas_ft = th.nn.Parameter(lambdas_V)
-
 
             else:
                 init_fn(module.CPQ.S_model_ft)
@@ -140,10 +135,6 @@ def main():
                 init_fn(module.CPQ.S_headdim_ft)
                 init_fn(module.CPK.S_headdim_ft)
                 init_fn(module.CPV.S_headdim_ft)
-
-                # th.nn.init.normal_(module.CPQ.lambdas_ft)
-                # th.nn.init.normal_(module.CPK.lambdas_ft)
-                # th.nn.init.normal_(module.CPV.lambdas_ft)
 
 
             print(th.norm(module.weight))
@@ -157,6 +148,7 @@ def main():
     for name, param in model.named_parameters():
         if "_ft" in name:
             param.requires_grad = True
+
     model.reset_classifier(num_classes)
     model = th.nn.DataParallel(model)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
