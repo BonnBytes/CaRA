@@ -15,7 +15,7 @@ class CPLoRA(th.nn.Module):
         self.S_model_ft = th.nn.Parameter(th.zeros((embed_dim, tr_rank)), requires_grad=True)
         self.S_heads_ft = th.nn.Parameter(th.zeros((num_heads, tr_rank)), requires_grad=True)
         self.S_headdim_ft = th.nn.Parameter(th.zeros((head_dim, tr_rank)), requires_grad=True)
-        # self.bias_ft = th.nn.Parameter(th.zeros((embed_dim)), requires_grad=True)
+        self.bias_ft = th.nn.Parameter(th.zeros((embed_dim)), requires_grad=True)
         # self.lambdas_ft = th.nn.Parameter(th.ones((tr_rank)), requires_grad=True)
         self.relu = th.nn.ReLU()
     
@@ -24,7 +24,7 @@ class CPLoRA(th.nn.Module):
         x = x.reshape((B, N, self.num_heads, self.head_dim))
         # op2 = self.__thunder_forward((self.lambdas_ft, self.S_model_ft, self.S_heads_ft, self.S_headdim_ft), x)
         op2 = self.__thunder_forward((self.S_model_ft, self.S_heads_ft, self.S_headdim_ft), x)
-        return op2# + self.bias_ft
+        return op2 + self.bias_ft
         # tensor_ = tl.cp_to_tensor((self.lambdas_ft, (self.S_model_ft, self.S_heads_ft, self.S_headdim_ft)))
         # op2 = self._tensor_forward(tensor_, x)
         # return op2.reshape((B, N, C))
