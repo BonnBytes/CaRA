@@ -59,22 +59,27 @@ def split_weight(weight):
     return layer_weight.unbind(0)
 
 
-def thunder_forward(factors, input_):
-    S_e, S_h, S_d = factors
+def attn_thunder_forward(factors, input_):
+    F_1, F_2, F_3, F_4 = factors
     input_ = input_.unsqueeze(0)
     preprocess = (
-        lambda x: x.unsqueeze(0).unsqueeze(0).unsqueeze(0).permute([-1, 0, 1, 2, 3])
+        lambda x: x.unsqueeze(0).unsqueeze(0).unsqueeze(0).permute((-1, 0, 1, 2, 3))
     )
-    S_d = preprocess(S_d)
-    S_h = preprocess(S_h).squeeze(-2)
-    S_e = preprocess(S_e).squeeze(-2)
+    F_1 = preprocess(F_1)
+    F_2 = preprocess(F_2)
+    F_3 = preprocess(F_3)
+    F_4 = preprocess(F_4)
 
-    inter_1 = input_ @ S_d.swapaxes(-2, -1)
-    inter_1 = inter_1.squeeze(-1)
-    inter_2 = inter_1 @ S_h.swapaxes(-2, -1)
-    output_ = inter_2 @ S_e
-    output_ = th.sum(output_, 0)
-    return output_
+    inter_1 = X_res @ F_4.swapaxes(-2, -1)
+    inter_2 = F_3 @ inter_1
+    inter_3 = inter_2 @ F_2
+    output = F_1.swapaxes(-2, -1) @ inter_3
+    output = th.sum(output, 0).permute((2, 0, 1, 3))
+    return output
+
+
+def mlp_thunder_forward(factors, input_):
+    pass
 
 
 def cp_attn(self, x):
