@@ -104,25 +104,45 @@ def cp_mlp(self, x):
 
 def set_CP(model, dim=9, s=1):
     if type(model) == timm.models.vision_transformer.VisionTransformer:
-        model.CP_E = nn.Linear(768, dim, bias=False)
-        model.CP_H = nn.Linear(12, dim, bias=False)
-        model.CP_D = nn.Linear(768//12, dim, bias=False)
+        model.CP_A1 = nn.Parameter(torch.zeros([dim, 36]), requires_grad=True)
+        model.CP_A2 = nn.Linear(768, dim, bias=False)
+        model.CP_A3 = nn.Linear(12, dim, bias=False)
+        model.CP_A4 = nn.Linear(768//12, dim, bias=False)
 
-        nn.init.xavier_normal_(model.CP_E)
-        nn.init.xavier_normal_(model.CP_H)
-        nn.init.xavier_normal_(model.CP_D)
+        model.CP_P1 = nn.Parameter(torch.zeros([dim, 108]), requires_grad=True)
+        model.CP_P2 = nn.Linear(768, dim, bias=False)
+        model.CP_P3 = nn.Linear(768, dim, bias=False)
+
+        nn.init.xavier_normal_(model.CP_A1)
+        nn.init.xavier_normal_(model.CP_A2.weight)
+        nn.init.xavier_normal_(model.CP_A3.weight)
+        nn.init.xavier_normal_(model.CP_A4.weight)
         model.idx = 0
-        for child in model.children():
-            if type(child) == timm.models.vision_transformer.Attention:
-                child.dp = nn.Dropout(0.1)
-                child.s = s
-                child.dim = dim
-                child.idx = vit.idx
-                vit.idx += 4
-                bound_method = cp_attn.__get__(child, child.__class__)
-                setattr(child, "forward", bound_method)
-            elif len(list(child.children())) != 0:
-                set_CP(child, dim, s)
+        model.attn_idx = 0
+    for child in model.children():
+        print(type(child))
+        if type(child) == timm.models.vision_transformer.Attention:
+            child.dp = nn.Dropout(0.1)
+            child.s = s
+            child.dim = dim
+            child.idx = vit.idx
+            child.attn_idx = vit.attn_idx
+            print(f"In attn {vit.idx}, {vit.attn_idx}")
+            vit.idx += 1
+            vit.attn_idx += 3
+            bound_method = cp_attn.__get__(child, child.__class__)
+            setattr(child, "forward", bound_method)
+        elif type(child) == timm.layers.mlp.Mlp:
+            child.dim = dim
+            child.s = s
+            child.dp = nn.Dropout(0.1)
+            child.idx = vit.idx
+            print(f"In MLP: {vit.idx}")
+            vit.idx += 8
+            bound_method = cp_mlp.__get__(child, child.__class__)
+            setattr(child, "forward", bound_method)
+        elif len(list(child.children())) != 0:
+            set_CP(child, dim, s)
 
 def _parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
@@ -133,6 +153,7 @@ def _parse_args():
 
         help="Number of trainable ranks."
     )
+    parser.add_argument('--model', type=str, default='vit_base_patch16_224_in21k')
     return parser.parse_args()
 
 
@@ -143,8 +164,8 @@ def main():
     name = "svhn"
     train_dl, test_dl = get_data(name)
     num_classes = get_classes_num(name)
-
-    vit = create_model("vit_base_patch16_224_in21k", checkpoint_path="./ViT-B_16.npz", drop_path_rate=0.1)
+    global vit
+    vit = create_model(args.model, checkpoint_path="./ViT-B_16.npz", drop_path_rate=0.1)
     set_CP(vit, dim=2, s=1)
     trainable = []
     vit.reset_classifier(num_classes)
@@ -158,6 +179,11 @@ def main():
             p.requires_grad = False
 
     print(f"Total parameters: {total_param}")
-    optimizer = th.optim.AdamW(trainable, lr=1e-3, weight_decay=1e-4)
-    scheduler = None
-    vit = train(args, vit, train_dl, test_dl, optimizer, scheduler, epoch=100)
+    # print(vit)
+    # optimizer = th.optim.AdamW(trainable, lr=1e-3, weight_decay=1e-4)
+    # scheduler = None
+    # vit = train(args, vit, train_dl, test_dl, optimizer, scheduler, epochs=100)
+
+
+if __name__ == "__main__":
+    main()
