@@ -79,7 +79,7 @@ def attn_thunder_forward(factors, input_):
 
 
 def mlp_thunder_forward(factors, input_):
-    pass
+    raise RuntimeError("Not implemented")
 
 
 def cp_attn(self, x):
