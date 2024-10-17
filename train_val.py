@@ -26,7 +26,7 @@ def train(model, dl, tdl, opt, scheduler, epoch):
             scheduler.step(ep)
         if ep == 49:
             acc = test(model, tdl)
-            pbar.set_description(f"Accuracy: {str(acc)}")
+            pbar.set_description(f"Accuracy: {str(acc*100)}")
     model = model.cpu()
     return model
 
@@ -51,7 +51,7 @@ def _parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         "--trainable-ranks",
-        default=2,
+        default=10,
         type=int,
 
         help="Number of trainable ranks."
@@ -88,12 +88,7 @@ def main():
         new_mod.bias = mod.bias if b else None
         model.get_submodule(".".join(parent))[int(k)].attn.qkv = new_mod
 
-    for param in model.parameters():
-        param.requires_grad = False
-
-    for name, param in model.named_parameters():
-        if "_ft" in name:
-            param.requires_grad = True
+    
 
     # init_fn = th.nn.init.xavier_normal_
     # init_fn = th.nn.init.xavier_uniform_
@@ -111,12 +106,15 @@ def main():
         layer_weight = weight.reshape(3, dim1, dim2)
         return layer_weight.unbind(0)
 
-
-
+    print("\nRanks in decreasing order\n")
+    ranks = [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2]
+    count = 0
     for name, module in model.named_modules():
         if "qkv" in name and isinstance(module, CPLoraMerged):
             if init_fn == "CP":
-                decomp = tl.decomposition.CP(rank=args.trainable_ranks, normalize_factors=False, verbose=False, init="random", tol=1e-24, random_state=42)
+                r = ranks[count]
+                count += 1
+                decomp = tl.decomposition.CP(rank=r, normalize_factors=False, verbose=False, init="random", tol=1e-24, random_state=42)
                 Q_weight, K_weight, V_weight = split_weight(module.weight.data)
                 tensor_fn = lambda x: x.reshape((x.shape[0], 12, x.shape[0]//12))
                 lambdas_Q, (model_Q, heads_Q, headdim_Q) = decomp.fit_transform(tensor_fn(Q_weight))
@@ -131,6 +129,7 @@ def main():
                 module.CPQ.S_headdim_ft = th.nn.Parameter(headdim_Q) 
                 module.CPK.S_headdim_ft = th.nn.Parameter(headdim_K) 
                 module.CPV.S_headdim_ft = th.nn.Parameter(headdim_V)
+                th.nn.init.normal_(module.scale_ft)
                 # module.CPQ.lambdas_ft = th.nn.Parameter(lambdas_Q)
                 # module.CPK.lambdas_ft = th.nn.Parameter(lambdas_K)
                 # module.CPV.lambdas_ft = th.nn.Parameter(lambdas_V)
@@ -156,7 +155,12 @@ def main():
             print(th.norm(module.CPK.S_model_ft), th.norm(module.CPK.S_heads_ft), th.norm(module.CPK.S_headdim_ft))
             print(th.norm(module.CPV.S_model_ft), th.norm(module.CPV.S_heads_ft), th.norm(module.CPV.S_headdim_ft))
             print()
+    for param in model.parameters():
+        param.requires_grad = False
 
+    for name, param in model.named_parameters():
+        if "_ft" in name:
+            param.requires_grad = True
     model.reset_classifier(num_classes)
     model = th.nn.DataParallel(model)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -169,7 +173,7 @@ def main():
     scheduler = None
     model = train(model, train_dl, test_dl, opt, scheduler, 100)
     facc = test(model, test_dl)
-    print(f"Final Accuracy: {facc}")
+    print(f"Final Accuracy: {facc*100}")
 
 if __name__ == "__main__":
     main()

@@ -14,4 +14,4 @@ conda activate pytorch
 
 # python train_val.py --trainable-ranks=2
 # python train_val.py --trainable-ranks=5
-python train_val.py --trainable-ranks=9
+python train_val.py

@@ -95,6 +95,7 @@ class CPLoraMerged(th.nn.Linear):
         self.CPQ = CPLoRA(tr_rank, embed_dim, num_heads)
         self.CPK = CPLoRA(tr_rank, embed_dim, num_heads)
         self.CPV = CPLoRA(tr_rank, embed_dim, num_heads)
+        self.scale_ft = th.nn.Parameter(th.randn([1]), requires_grad=True)
     
     def forward(self, x):
         out1 = super().forward(x)
@@ -102,4 +103,4 @@ class CPLoraMerged(th.nn.Linear):
         K = self.CPK(x)
         V = self.CPV(x)
         out = th.cat([Q, K, V], dim=-1)
-        return out1 + out
+        return out1 + self.scale_ft * out
