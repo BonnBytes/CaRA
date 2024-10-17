@@ -2,29 +2,7 @@ import torch as th
 
 import tensorly as tl
 tl.set_backend("pytorch")
-from typing import Tuple
-# RANK = 500
-
-
-# class Dummy(th.nn.Module):
-#     def __init__(self, num_classes: int) -> None:
-#         super().__init__()
-#         # self.lin1 = th.nn.Linear(3675, 4096)
-#         self.lin1 = CPLinear(3675, 4096, r=RANK)
-#         # self.lin2 = th.nn.Linear(4096, 2048)
-#         self.lin2 = CPLinear(4096, 2048, r=RANK)
-#         # self.lin3 = th.nn.Linear(2048, 1024)
-#         self.lin3 = CPLinear(2048, 1024, r=RANK)
-#         self.lin4 = th.nn.Linear(1024, num_classes)
-#         self.relu = th.nn.ReLU()
-#         self.sigm = th.nn.Sigmoid()
-    
-#     def forward(self, x):
-#         x = x.reshape((x.shape[0], -1))
-#         x = self.relu(self.lin1(x))
-#         x = self.sigm(self.lin2(x))
-#         x = self.relu(self.lin3(x))
-#         return self.lin4(x)
+from typing import Tuple, Optional
 
 
 class CPLoRA(th.nn.Module):
@@ -37,15 +15,15 @@ class CPLoRA(th.nn.Module):
         self.S_model_ft = th.nn.Parameter(th.zeros((embed_dim, tr_rank)), requires_grad=True)
         self.S_heads_ft = th.nn.Parameter(th.zeros((num_heads, tr_rank)), requires_grad=True)
         self.S_headdim_ft = th.nn.Parameter(th.zeros((head_dim, tr_rank)), requires_grad=True)
+        # self.bias_ft = th.nn.Parameter(th.zeros((embed_dim)), requires_grad=True)
         # self.lambdas_ft = th.nn.Parameter(th.ones((tr_rank)), requires_grad=True)
-        self.relu = th.nn.ReLU()
     
     def forward(self, x):
         B, N, C = x.shape
         x = x.reshape((B, N, self.num_heads, self.head_dim))
         # op2 = self.__thunder_forward((self.lambdas_ft, self.S_model_ft, self.S_heads_ft, self.S_headdim_ft), x)
         op2 = self.__thunder_forward((self.S_model_ft, self.S_heads_ft, self.S_headdim_ft), x)
-        return op2
+        return op2 # + self.bias_ft
         # tensor_ = tl.cp_to_tensor((self.lambdas_ft, (self.S_model_ft, self.S_heads_ft, self.S_headdim_ft)))
         # op2 = self._tensor_forward(tensor_, x)
         # return op2.reshape((B, N, C))
@@ -104,3 +82,51 @@ class CPLoraMerged(th.nn.Linear):
         V = self.CPV(x)
         out = th.cat([Q, K, V], dim=-1)
         return out1 + self.scale_ft * out
+        return out1 + out
+
+
+class NormalLinear(th.nn.Linear):
+    """Simple linear projection layer."""
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        tr_rank: int,
+        bias: Optional[bool] = True,
+        device=None,
+        dtype=None,
+    ) -> None:
+        """Initialize layer.
+
+        Args:
+            in_features (int): Number of input features.
+            out_features (int): Number of output features.
+            tr_rank (int): Number of trainable ranks.
+            bias (bool, optional): Bias boolean. Defaults to True.
+            device (_type_, optional): Torch device to use. Defaults to None.
+            dtype (_type_, optional): Torch dtype to use. Defaults to None.
+        """
+        super().__init__(in_features, out_features, bias, device, dtype)
+        self.tr_rank = tr_rank
+        self.S_one_ft = th.nn.Parameter(
+            th.zeros((out_features, tr_rank)), requires_grad=True
+        )
+        self.S_two_ft = th.nn.Parameter(
+            th.zeros((in_features, tr_rank)), requires_grad=True
+        )
+        # self.bias_ft = th.nn.Parameter(th.zeros(out_features), requires_grad=True)
+
+    def forward(self, x: th.Tensor) -> th.Tensor:
+        """Forward pass.
+
+        Args:
+            x (th.Tensor): Input tensor.
+
+        Returns:
+            th.Tensor: Projected output.
+        """
+        output1 = super().forward(x)
+        weight_ = self.S_one_ft @ self.S_two_ft.T
+        output2 = x @ weight_.T # + self.bias_ft
+        return output1 + output2
