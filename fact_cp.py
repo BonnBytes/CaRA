@@ -7,6 +7,8 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from vtab import *
 import timm
 from timm.scheduler import CosineLRScheduler
+import tensorly as tl
+tl.set_backend("pytorch")
 
 
 def train(args, model, dl, tdl, opt, sched, epochs):
@@ -88,7 +90,10 @@ def mlp_thunder_forward(factors, input_, dropout = None):
         dropout = nn.Identity()
     P_1, P_2, P_3 = factors
     B, N, C = input_.shape
-    input_ = input_.unsqueeze(0).unsqueeze(-2)
+    if C == 768:
+        input_ = input_.unsqueeze(0).unsqueeze(-2)
+    elif C == 3072:
+        input_ = input_.reshape((B, N, 4, C//4)).unsqueeze(0)
     preprocess = (
         lambda x: x.unsqueeze(0).unsqueeze(0).unsqueeze(0).permute((-1, 0, 1, 2, 3))
     )
@@ -134,14 +139,20 @@ def cp_mlp(self, x):
     p1_down = vit.CP_P2[self.idx+4: self.idx+8, :]
 
     up = self.fc1(x)
-    up_delta = mlp_thunder_forward((p1_up, vit.CP_P2, vit.CP_P3), x, self.dp)
+    tensor_up = tl.cp_to_tensor((None, (p1_up, vit.CP_P2, vit.CP_P3)))
+    AA, AB, AC = tensor_up.shape
+    tensor_up = tensor_up.reshape((AA*AB, AC))
+    up_delta = x@self.dp(tensor_up.T)
     up += up_delta * self.s
 
     x = self.act(up)
     x = self.drop1(x)
     
     down = self.fc2(x)
-    down_delta = mlp_thunder_forward((p1_down, vit.CP_P2, vit.CP_P3), x, self.dp)
+    tensor_down = tl.cp_to_tensor((None, (p1_up, vit.CP_P2, vit.CP_P3)))
+    AA, AB, AC = tensor_down.shape
+    tensor_down = tensor_down.reshape((AA*AB, AC))
+    down_delta = x@self.dp(tensor_down)
     down += down_delta * self.s
     x = self.drop2(down)
     return x
@@ -192,7 +203,7 @@ def _parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         "--dim",
-        default=8,
+        default=6,
         type=int,
 
         help="Number of trainable ranks."
