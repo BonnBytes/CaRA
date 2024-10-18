@@ -27,7 +27,7 @@ def train(args, model, dl, tdl, opt, sched, epochs):
         if sched is not None:
             sched.step(epoch)
         # Add accuracy calculation here
-        if epoch % 50 == 0:
+        if epoch % 10 == 0 and epoch != 0:
             acc = test(model, tdl)
     model = model.cpu()
     return model
@@ -90,10 +90,7 @@ def mlp_thunder_forward(factors, input_, dropout = None):
         dropout = nn.Identity()
     P_1, P_2, P_3 = factors
     B, N, C = input_.shape
-    if C == 768:
-        input_ = input_.unsqueeze(0).unsqueeze(-2)
-    elif C == 3072:
-        input_ = input_.reshape((B, N, 4, C//4)).unsqueeze(0)
+    input_ = input_.unsqueeze(0).unsqueeze(-2)
     preprocess = (
         lambda x: x.unsqueeze(0).unsqueeze(0).unsqueeze(0).permute((-1, 0, 1, 2, 3))
     )
@@ -149,10 +146,11 @@ def cp_mlp(self, x):
     x = self.drop1(x)
     
     down = self.fc2(x)
-    tensor_down = tl.cp_to_tensor((None, (p1_up, vit.CP_P2, vit.CP_P3)))
+    tensor_down = tl.cp_to_tensor((None, (p1_down, vit.CP_P2, vit.CP_P3)))
+    tensor_down = tensor_down.permute((1, 2, 0))
     AA, AB, AC = tensor_down.shape
-    tensor_down = tensor_down.reshape((AA*AB, AC))
-    down_delta = x@self.dp(tensor_down)
+    tensor_down = tensor_down.reshape((AA, AB*AC))
+    down_delta = x@self.dp(tensor_down.T)
     down += down_delta * self.s
     x = self.drop2(down)
     return x
@@ -203,7 +201,7 @@ def _parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         "--dim",
-        default=6,
+        default=16,
         type=int,
 
         help="Number of trainable ranks."
@@ -217,7 +215,7 @@ def main():
     args = _parse_args()
     print(args)
     name = "svhn"
-    train_dl, test_dl = get_data(name, evaluate=True)
+    train_dl, test_dl = get_data(name, evaluate=False)
     num_classes = get_classes_num(name)
     global vit
     vit = create_model(args.model, checkpoint_path="./ViT-B_16.npz", drop_path_rate=0.1)
