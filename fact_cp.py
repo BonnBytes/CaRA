@@ -27,7 +27,7 @@ def train(args, model, dl, tdl, opt, sched, epochs):
         if sched is not None:
             sched.step(epoch)
         # Add accuracy calculation here
-        if epoch % 10 == 0 and epoch != 0:
+        if epoch % 25 == 0 and epoch != 0:
             acc = test(model, tdl)
     model = model.cpu()
     return model
@@ -77,9 +77,13 @@ def attn_thunder_forward(factors, input_, dropout=None):
     F_4 = preprocess(F_4)
 
     inter_1 = input_ @ F_4.swapaxes(-2, -1)
+    del F_4
     inter_2 = F_3 @ inter_1
+    del F_3, inter_1
     inter_3 = inter_2 @ F_2
+    del F_2, inter_2
     output = F_1.swapaxes(-2, -1) @ dropout(inter_3)
+    del F_1, inter_3
     output = th.sum(output, 0).permute((2, 0, 1, 3))
     K, B, N, C = output.shape
     return output.reshape((K, B, N, heads, C//heads)).permute(0, 1, 3, 2, 4)
@@ -99,10 +103,37 @@ def mlp_thunder_forward(factors, input_, dropout = None):
     P_3 = preprocess(P_3)
 
     inter_1 = input_ @ P_3.swapaxes(-2, -1)
+    del P_3
     inter_2 = inter_1 @ dropout(P_2)
+    del P_2, inter_1
     output = P_1.swapaxes(-2, -1) @ inter_2
+    del P_1, inter_2
     R, B, N, e, k = output.shape
     output = output.reshape((R, B, N, e*k))
+    output = th.sum(output, dim=0)
+    return output
+
+
+def mlp_down_forward(factors, input_, dropout=None):
+    if dropout is None:
+        dropout = nn.Identity()
+    P_1, P_2, P_3 = factors
+    B, N, C = input_.shape
+    x_ = input_.reshape(B, N, C//4, 4)
+    x_ = x_.unsqueeze(0)
+    preprocess = (
+        lambda x: x.unsqueeze(0).unsqueeze(0).unsqueeze(0).permute((-1, 0, 1, 2, 3))
+    )
+    P_1 = preprocess(P_1)
+    P_2 = preprocess(P_2)
+    P_3 = preprocess(P_3)
+    inter_1 = x_ @ P_1.swapaxes(-2, -1)
+    del P_1
+    inter_2 = dropout(P_2) @ inter_1
+    del P_2, inter_1
+    inter_2 = inter_2.squeeze(-1)
+    output = inter_2 @ P_3.squeeze(1)
+    del P_3, inter_2
     output = th.sum(output, dim=0)
     return output
 
@@ -125,7 +156,11 @@ def cp_attn(self, x):
     x = (attn@v).transpose(1, 2).reshape(B, N, C)
     proj = self.proj(x)
     p1 = vit.CP_P1[self.idx:self.idx+1, :]
-    proj_delta = mlp_thunder_forward((p1, vit.CP_P2, vit.CP_P3), x, self.dp)
+    # proj_delta = mlp_thunder_forward((p1, vit.CP_P2, vit.CP_P3), x, self.dp)
+    tensor_proj = tl.cp_to_tensor((None, (p1, vit.CP_P2, vit.CP_P3)))
+    AA, AB, AC = tensor_proj.shape
+    tensor_proj = tensor_proj.reshape((AA*AB, AC))
+    proj_delta = x@self.dp(tensor_proj.T)
     proj += proj_delta * self.s
     x = self.proj_drop(proj)
     return x
@@ -133,9 +168,10 @@ def cp_attn(self, x):
 
 def cp_mlp(self, x):
     p1_up = vit.CP_P1[self.idx:self.idx+4, :]
-    p1_down = vit.CP_P2[self.idx+4: self.idx+8, :]
+    p1_down = vit.CP_P1[self.idx+4: self.idx+8, :]
 
     up = self.fc1(x)
+    # up_delta = mlp_thunder_forward((p1_up, vit.CP_P2, vit.CP_P3), x, self.dp)
     tensor_up = tl.cp_to_tensor((None, (p1_up, vit.CP_P2, vit.CP_P3)))
     AA, AB, AC = tensor_up.shape
     tensor_up = tensor_up.reshape((AA*AB, AC))
@@ -146,11 +182,10 @@ def cp_mlp(self, x):
     x = self.drop1(x)
     
     down = self.fc2(x)
+    # down_delta = mlp_down_forward((p1_down, vit.CP_P2, vit.CP_P3), x, self.dp)
     tensor_down = tl.cp_to_tensor((None, (p1_down, vit.CP_P2, vit.CP_P3)))
-    tensor_down = tensor_down.permute((1, 2, 0))
-    AA, AB, AC = tensor_down.shape
-    tensor_down = tensor_down.reshape((AA, AB*AC))
-    down_delta = x@self.dp(tensor_down.T)
+    tensor_down = tensor_down.reshape((AA*AB, AC))
+    down_delta = x@self.dp(tensor_down)
     down += down_delta * self.s
     x = self.drop2(down)
     return x
@@ -172,7 +207,7 @@ def set_CP(model, dim=9, s=1):
         nn.init.xavier_normal_(model.CP_A4)
         nn.init.xavier_normal_(model.CP_P1)
         nn.init.xavier_normal_(model.CP_P2)
-        nn.init.zeros_(model.CP_P3)
+        nn.init.xavier_normal_(model.CP_P3)
         model.idx = 0
         model.attn_idx = 0
     for child in model.children():
@@ -215,12 +250,12 @@ def main():
     args = _parse_args()
     print(args)
     name = "svhn"
-    train_dl, test_dl = get_data(name, evaluate=False)
+    train_dl, test_dl = get_data(name, evaluate=True)
     num_classes = get_classes_num(name)
     global vit
     vit = create_model(args.model, checkpoint_path="./ViT-B_16.npz", drop_path_rate=0.1)
     # vit = th.nn.DataParallel(vit)
-    set_CP(vit, dim=args.dim, s=100)
+    set_CP(vit, dim=args.dim, s=1)
     trainable = []
     vit.reset_classifier(num_classes)
     total_param = 0
@@ -233,6 +268,7 @@ def main():
             p.requires_grad = False
     print(f"Total parameters: {total_param}")
     optimizer = th.optim.AdamW(trainable, lr=1e-3, weight_decay=1e-4)
+    # optimizer = th.optim.SGD(trainable, lr=1e-2, momentum=0.8, nesterov=True)
     scheduler = None
     # scheduler = CosineLRScheduler(optimizer, t_initial=100, warmup_t=10, lr_min=1e-5, warmup_lr_init=1e-6, k_decay=0.1)
     vit = train(args, vit, train_dl, test_dl, optimizer, scheduler, epochs=100)
