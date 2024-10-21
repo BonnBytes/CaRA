@@ -227,13 +227,13 @@ def set_CP(model, dim=9, s=1):
         model.CP_P2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
         model.CP_P3 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
         
-        nn.init.xavier_normal_(model.CP_A1)
-        nn.init.xavier_normal_(model.CP_A2)
-        nn.init.xavier_normal_(model.CP_A3)
-        nn.init.xavier_normal_(model.CP_A4)
-        nn.init.xavier_normal_(model.CP_P1)
-        nn.init.xavier_normal_(model.CP_P2)
-        nn.init.xavier_normal_(model.CP_P3)
+        nn.init.orthogonal_(model.CP_A1)
+        nn.init.orthogonal_(model.CP_A2)
+        nn.init.orthogonal_(model.CP_A3)
+        nn.init.orthogonal_(model.CP_A4)
+        nn.init.orthogonal_(model.CP_P1)
+        nn.init.orthogonal_(model.CP_P2)
+        nn.init.orthogonal_(model.CP_P3)
         model.idx = 0
         model.attn_idx = 0
         model.l_idx = 0
