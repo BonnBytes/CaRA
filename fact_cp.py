@@ -294,6 +294,9 @@ def main():
     np.random.seed(42)
     th.manual_seed(42)
     th.cuda.manual_seed_all(42)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
     print("New one")
     args = _parse_args()
     print(args)
@@ -330,6 +333,7 @@ def main():
     _, test_dl = get_data(name, evaluate=True)
     acc = test(vit, tqdm(test_dl))
     print(f"Accuracy: {acc}")
+    th.save(vit.state_dict(), f"./vit_svhn_{acc}.pt")
     if log:
         logger.log({"final_acc": acc})
         wandb.finish()
