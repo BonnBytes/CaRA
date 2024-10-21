@@ -14,4 +14,7 @@ conda activate pytorch
 
 # python train_val.py --trainable-ranks=2
 # python train_val.py --trainable-ranks=5
-python train_val.py
+# python train_val.py
+# python fact_cp.py
+
+python fact_cp.py --lr=1e-3 --s=1 --dim=32
