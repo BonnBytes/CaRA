@@ -271,7 +271,7 @@ def _parse_args():
     )
     parser.add_argument(
         "--s",
-        default=1,
+        default=10,
         type=float,
         help="Scale for CP form"
     )
@@ -296,7 +296,7 @@ def main():
     th.cuda.manual_seed_all(42)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    
+
     print("New one")
     args = _parse_args()
     print(args)
