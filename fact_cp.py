@@ -180,10 +180,16 @@ def cp_attn(self, x):
     attn = self.attn_drop(attn)
 
     x = (attn@v).transpose(1, 2).reshape(B, N, C)
+
+    # # Residual pooling connection
+    # query_res = qkv_delta[0].reshape(B, N, -1)
+    # x = x + query_res
+
     proj = self.proj(x)
     p1 = vit.CP_P1[self.idx:self.idx+1, :]
     # proj_delta = mlp_thunder_forward((p1, vit.CP_P2, vit.CP_P3), x, self.dp)
-    tensor_proj = tl.cp_to_tensor((None, (p1, vit.CP_P2, vit.CP_P3)))
+    # tensor_proj = tl.cp_to_tensor((None, (p1, vit.CP_P2, vit.CP_P3)))
+    tensor_proj = tl.cp_to_tensor((None, (p1, vit.CP_A2, vit.CP_P3)))
     AA, AB, AC = tensor_proj.shape
     tensor_proj = tensor_proj.reshape((AA*AB, AC))
     proj_delta = x@self.dp(tensor_proj.T)
@@ -198,7 +204,8 @@ def cp_mlp(self, x):
 
     up = self.fc1(x)
     # up_delta = mlp_thunder_forward((p1_up, vit.CP_P2, vit.CP_P3), x, self.dp)
-    tensor_up = tl.cp_to_tensor((None, (p1_up, vit.CP_P2, vit.CP_P3)))
+    # tensor_up = tl.cp_to_tensor((None, (p1_up, vit.CP_P2, vit.CP_P3)))
+    tensor_up = tl.cp_to_tensor((None, (p1_up, vit.CP_A2, vit.CP_P3)))
     AA, AB, AC = tensor_up.shape
     tensor_up = tensor_up.reshape((AA*AB, AC))
     up_delta = x@self.dp(tensor_up.T)
@@ -209,7 +216,8 @@ def cp_mlp(self, x):
     
     down = self.fc2(x)
     # down_delta = mlp_down_forward((p1_down, vit.CP_P2, vit.CP_P3), x, self.dp)
-    tensor_down = tl.cp_to_tensor((None, (p1_down, vit.CP_P2, vit.CP_P3)))
+    # tensor_down = tl.cp_to_tensor((None, (p1_down, vit.CP_P2, vit.CP_P3)))
+    tensor_down = tl.cp_to_tensor((None, (p1_down, vit.CP_A2, vit.CP_P3)))
     tensor_down = tensor_down.reshape((AA*AB, AC))
     down_delta = x@self.dp(tensor_down)
     down += down_delta * self.s
@@ -224,7 +232,7 @@ def set_CP(model, dim=9, s=1):
         model.CP_A3 = nn.Parameter(th.empty([12, dim]), requires_grad=True)
         model.CP_A4 = nn.Parameter(th.empty([768//12, dim]), requires_grad=True)
         model.CP_P1 = nn.Parameter(th.empty([108, dim]), requires_grad=True)
-        model.CP_P2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
+        # model.CP_P2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
         model.CP_P3 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
         
         nn.init.orthogonal_(model.CP_A1)
@@ -232,7 +240,7 @@ def set_CP(model, dim=9, s=1):
         nn.init.orthogonal_(model.CP_A3)
         nn.init.orthogonal_(model.CP_A4)
         nn.init.orthogonal_(model.CP_P1)
-        nn.init.orthogonal_(model.CP_P2)
+        # nn.init.orthogonal_(model.CP_P2)
         nn.init.orthogonal_(model.CP_P3)
         model.idx = 0
         model.attn_idx = 0
