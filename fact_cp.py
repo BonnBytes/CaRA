@@ -4,8 +4,10 @@ from tqdm import tqdm
 import numpy  as np
 from timm.models import create_model
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from avalanche.evaluation.metrics.accuracy import Accuracy
 from vtab import *
 import timm
+import random
 import wandb
 from timm.scheduler import CosineLRScheduler
 import tensorly as tl
@@ -15,7 +17,7 @@ tl.set_backend("pytorch")
 def train(args, model, dl, tdl, opt, sched, epochs):
     model.train()
     model = model.cuda()
-    acc = 0.
+    acc = [0., 0.]
     idx = 0
     for epoch in (pbar:=tqdm(range(epochs))):
     # for epoch in range(epochs):
@@ -31,14 +33,14 @@ def train(args, model, dl, tdl, opt, sched, epochs):
             idx += 1
             if log:
                 logger.log({"loss":loss.item()})
-            pbar.set_description(f"e: {epoch}, l: {round(loss.item(), 7)}, a:{acc}")
+            pbar.set_description(f"e: {epoch}, l: {round(loss.item(), 7)}, a:{acc[1]}")
         if sched is not None:
             sched.step(epoch)
         # Add accuracy calculation here
         if epoch % 50 == 0 and epoch != 0:
             acc = test(model, tqdm(tdl))
             if log:
-                logger.log({"val_acc": acc})
+                logger.log({"val_acc": acc[1]})
             # print(f"Epoch: {epoch}, Accuracy: {acc}")
     model = model.cpu()
     return model
@@ -47,18 +49,21 @@ def train(args, model, dl, tdl, opt, sched, epochs):
 @th.no_grad()
 def test(model, dl):
     model.eval()
-    acc = []
-    ex = []
+    # acc = []
+    # ex = []
+    acc = Accuracy()
     model = model.cuda()
     for batch in dl:
         x, y = batch[0].cuda(), batch[1].cuda()
         out = model(x).data
-        out = th.argmax(out, dim=1)
-        correct = (out == y).float()
-        acc.extend(correct)
-        ex.append(len(y))
-    ac = sum(acc) / sum(ex)
-    return round(ac.cpu().item(), 4)
+        acc.update(out.argmax(dim=1).view(-1), y, 1)
+    return acc.result()
+    #     out = th.argmax(out, dim=1)
+    #     correct = (out == y).float()
+    #     acc.extend(correct)
+    #     ex.append(len(y))
+    # ac = sum(acc) / sum(ex)
+    # return round(ac.cpu().item(), 4)
     # Add accuracy calculation here
 
 
@@ -174,22 +179,18 @@ def cp_attn(self, x):
         2, 0, 3, 1, 4
     )
     qkv += qkv_delta * self.s
-    q, k, v = qkv.unbind(0)
+    # q, k, v = qkv.unbind(0)
+    q, k, v = qkv[0], qkv[1], qkv[2]
     attn = (q @ k.transpose(-2, -1)) * self.scale
     attn = attn.softmax(dim=-1)
     attn = self.attn_drop(attn)
 
     x = (attn@v).transpose(1, 2).reshape(B, N, C)
 
-    # # Residual pooling connection
-    # query_res = qkv_delta[0].reshape(B, N, -1)
-    # x = x + query_res
-
     proj = self.proj(x)
     p1 = vit.CP_P1[self.idx:self.idx+1, :]
     # proj_delta = mlp_thunder_forward((p1, vit.CP_P2, vit.CP_P3), x, self.dp)
-    # tensor_proj = tl.cp_to_tensor((None, (p1, vit.CP_P2, vit.CP_P3)))
-    tensor_proj = tl.cp_to_tensor((None, (p1, vit.CP_A2, vit.CP_P3)))
+    tensor_proj = tl.cp_to_tensor((None, (p1, vit.CP_P2, vit.CP_P3)))
     AA, AB, AC = tensor_proj.shape
     tensor_proj = tensor_proj.reshape((AA*AB, AC))
     proj_delta = x@self.dp(tensor_proj.T)
@@ -204,24 +205,22 @@ def cp_mlp(self, x):
 
     up = self.fc1(x)
     # up_delta = mlp_thunder_forward((p1_up, vit.CP_P2, vit.CP_P3), x, self.dp)
-    # tensor_up = tl.cp_to_tensor((None, (p1_up, vit.CP_P2, vit.CP_P3)))
-    tensor_up = tl.cp_to_tensor((None, (p1_up, vit.CP_A2, vit.CP_P3)))
+    tensor_up = tl.cp_to_tensor((None, (p1_up, vit.CP_P2, vit.CP_P3)))
     AA, AB, AC = tensor_up.shape
     tensor_up = tensor_up.reshape((AA*AB, AC))
     up_delta = x@self.dp(tensor_up.T)
     up += up_delta * self.s
 
     x = self.act(up)
-    x = self.drop1(x)
+    x = self.drop(x)
     
     down = self.fc2(x)
     # down_delta = mlp_down_forward((p1_down, vit.CP_P2, vit.CP_P3), x, self.dp)
-    # tensor_down = tl.cp_to_tensor((None, (p1_down, vit.CP_P2, vit.CP_P3)))
-    tensor_down = tl.cp_to_tensor((None, (p1_down, vit.CP_A2, vit.CP_P3)))
+    tensor_down = tl.cp_to_tensor((None, (p1_down, vit.CP_P2, vit.CP_P3)))
     tensor_down = tensor_down.reshape((AA*AB, AC))
     down_delta = x@self.dp(tensor_down)
     down += down_delta * self.s
-    x = self.drop2(down)
+    x = self.drop(down)
     return x
 
 
@@ -232,19 +231,18 @@ def set_CP(model, dim=9, s=1):
         model.CP_A3 = nn.Parameter(th.empty([12, dim]), requires_grad=True)
         model.CP_A4 = nn.Parameter(th.empty([768//12, dim]), requires_grad=True)
         model.CP_P1 = nn.Parameter(th.empty([108, dim]), requires_grad=True)
-        # model.CP_P2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
+        model.CP_P2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
         model.CP_P3 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
         
-        nn.init.orthogonal_(model.CP_A1)
-        nn.init.orthogonal_(model.CP_A2)
+        nn.init.xavier_normal_(model.CP_A1)
+        nn.init.zeros_(model.CP_A2)
         nn.init.orthogonal_(model.CP_A3)
         nn.init.orthogonal_(model.CP_A4)
-        nn.init.orthogonal_(model.CP_P1)
-        # nn.init.orthogonal_(model.CP_P2)
+        nn.init.xavier_normal_(model.CP_P1)
+        nn.init.zeros_(model.CP_P2)
         nn.init.orthogonal_(model.CP_P3)
         model.idx = 0
         model.attn_idx = 0
-        model.l_idx = 0
     for child in model.children():
         if type(child) == timm.models.vision_transformer.Attention:
             child.dp = nn.Dropout(0.1)
@@ -252,13 +250,11 @@ def set_CP(model, dim=9, s=1):
             child.dim = dim
             child.idx = vit.idx
             child.attn_idx = vit.attn_idx
-            child.l_idx = vit.l_idx
             vit.idx += 1
             vit.attn_idx += 3
-            vit.l_idx += 1
             bound_method = cp_attn.__get__(child, child.__class__)
             setattr(child, "forward", bound_method)
-        elif type(child) == timm.layers.mlp.Mlp:
+        elif type(child) == timm.models.layers.mlp.Mlp:
             child.dim = dim
             child.s = s
             child.dp = nn.Dropout(0.1)
@@ -279,7 +275,7 @@ def _parse_args():
     )
     parser.add_argument(
         "--s",
-        default=10,
+        default=100,
         type=float,
         help="Scale for CP form"
     )
@@ -299,13 +295,13 @@ def main():
     # np.random.seed(hash("improves reproducibility") % 2**32 - 1)
     # torch.manual_seed(hash("by removing stochasticity") % 2**32 - 1)
     # torch.cuda.manual_seed_all(hash("so runs are repeatable") % 2**32 - 1)
-    np.random.seed(42)
-    th.manual_seed(42)
-    th.cuda.manual_seed_all(42)
+    np.random.seed(84)
+    random.seed(84)
+    th.manual_seed(84)
+    th.cuda.manual_seed_all(84)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    print("New one")
     args = _parse_args()
     print(args)
     name = "svhn"
@@ -335,15 +331,15 @@ def main():
     optimizer = th.optim.AdamW(trainable, lr=args.lr, weight_decay=1e-4)
     # optimizer = th.optim.SGD(trainable, lr=1e-2, momentum=0.8, nesterov=True)
     # scheduler = None
-    scheduler = CosineLRScheduler(optimizer, t_initial=100, warmup_t=10, lr_min=1e-5, warmup_lr_init=1e-6, k_decay=1)
-    vit = train(args, vit, train_dl, test_dl, optimizer, scheduler, epochs=150)
+    scheduler = CosineLRScheduler(optimizer, t_initial=100, warmup_t=10, lr_min=1e-5, warmup_lr_init=1e-6, decay_rate=0.1)
+    vit = train(args, vit, train_dl, test_dl, optimizer, scheduler, epochs=100)
     print("\n\n Evaluating....")
     _, test_dl = get_data(name, evaluate=True)
     acc = test(vit, tqdm(test_dl))
-    print(f"Accuracy: {acc}")
-    th.save(vit.state_dict(), f"./vit_svhn_{acc}.pt")
+    print(f"Accuracy: {acc[1]}")
+    th.save(vit.state_dict(), f"./vit_svhn_{acc[1]}.pt")
     if log:
-        logger.log({"final_acc": acc})
+        logger.log({"final_acc": acc[1]})
         wandb.finish()
 
 if __name__ == "__main__":
