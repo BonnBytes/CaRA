@@ -162,7 +162,7 @@ def cp_attn(self, x):
     # # 4D Implementation - Memory expensive
     # qkv_delta = attn_thunder_forward((f1, vit.CP_A2, vit.CP_A3, vit.CP_A4), x, self.dp)
     #  Convert 4D to 2D
-    tensor_attn = tl.cp_to_tensor((None, (f1, vit.CP_A2, vit.CP_A3, vit.CP_A4)))
+    tensor_attn = tl.cp_to_tensor((vit.CP_R1, (f1, vit.CP_A2, vit.CP_A3, vit.CP_A4)))
     K, E, H, D = tensor_attn.shape
     tensor_attn = tensor_attn.reshape((K, E, H*D)).swapaxes(-2, -1)
     qkv_delta = th.einsum("bnd, ked->kbne", x, self.dp(tensor_attn))
@@ -190,7 +190,7 @@ def cp_attn(self, x):
     proj = self.proj(x)
     p1 = vit.CP_P1[self.idx:self.idx+1, :]
     # proj_delta = mlp_thunder_forward((p1, vit.CP_P2, vit.CP_P3), x, self.dp)
-    tensor_proj = tl.cp_to_tensor((None, (p1, vit.CP_P2, vit.CP_P3)))
+    tensor_proj = tl.cp_to_tensor((vit.CP_R2, (p1, vit.CP_P2, vit.CP_P3)))
     AA, AB, AC = tensor_proj.shape
     tensor_proj = tensor_proj.reshape((AA*AB, AC))
     proj_delta = x@self.dp(tensor_proj.T)
@@ -205,7 +205,7 @@ def cp_mlp(self, x):
 
     up = self.fc1(x)
     # up_delta = mlp_thunder_forward((p1_up, vit.CP_P2, vit.CP_P3), x, self.dp)
-    tensor_up = tl.cp_to_tensor((None, (p1_up, vit.CP_P2, vit.CP_P3)))
+    tensor_up = tl.cp_to_tensor((vit.CP_R2, (p1_up, vit.CP_P2, vit.CP_P3)))
     AA, AB, AC = tensor_up.shape
     tensor_up = tensor_up.reshape((AA*AB, AC))
     up_delta = x@self.dp(tensor_up.T)
@@ -216,7 +216,7 @@ def cp_mlp(self, x):
     
     down = self.fc2(x)
     # down_delta = mlp_down_forward((p1_down, vit.CP_P2, vit.CP_P3), x, self.dp)
-    tensor_down = tl.cp_to_tensor((None, (p1_down, vit.CP_P2, vit.CP_P3)))
+    tensor_down = tl.cp_to_tensor((vit.CP_R2, (p1_down, vit.CP_P2, vit.CP_P3)))
     tensor_down = tensor_down.reshape((AA*AB, AC))
     down_delta = x@self.dp(tensor_down)
     down += down_delta * self.s
@@ -233,6 +233,8 @@ def set_CP(model, dim=9, s=1):
         model.CP_P1 = nn.Parameter(th.empty([108, dim]), requires_grad=True)
         model.CP_P2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
         model.CP_P3 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
+        model.CP_R1 = nn.Parameter(th.empty([dim], requires_grad=True))
+        model.CP_R2 = nn.Parameter(th.empty([dim], requires_grad=True))
         
         nn.init.xavier_normal_(model.CP_A1)
         nn.init.zeros_(model.CP_A2)
@@ -241,6 +243,10 @@ def set_CP(model, dim=9, s=1):
         nn.init.xavier_normal_(model.CP_P1)
         nn.init.zeros_(model.CP_P2)
         nn.init.orthogonal_(model.CP_P3)
+
+        nn.init.ones_(model.CP_R1)
+        nn.init.ones_(model.CP_R2)
+
         model.idx = 0
         model.attn_idx = 0
     for child in model.children():
@@ -329,8 +335,7 @@ def main():
             p.requires_grad = False
     print(f"Total parameters: {total_param}")
     optimizer = th.optim.AdamW(trainable, lr=args.lr, weight_decay=1e-4)
-    # optimizer = th.optim.SGD(trainable, lr=1e-2, momentum=0.8, nesterov=True)
-    # scheduler = None
+    scheduler = None
     scheduler = CosineLRScheduler(optimizer, t_initial=100, warmup_t=10, lr_min=1e-5, warmup_lr_init=1e-6, decay_rate=0.1)
     vit = train(args, vit, train_dl, test_dl, optimizer, scheduler, epochs=100)
     print("\n\n Evaluating....")
