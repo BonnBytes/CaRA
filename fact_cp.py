@@ -6,6 +6,7 @@ from timm.models import create_model
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from avalanche.evaluation.metrics.accuracy import Accuracy
 from vtab import *
+from vtab_config import config
 import timm
 import random
 import wandb
@@ -24,6 +25,21 @@ def train(args, model, dl, tdl, opt, sched, epochs):
         if log:
             logger.log({"epoch":epoch})
         for batch in dl:
+            if log:
+                r1_hist = wandb.Histogram(vit.CP_R1.cpu().detach().numpy())
+                r2_hist = wandb.Histogram(vit.CP_R2.cpu().detach().numpy())
+                logger.log({
+                    "R1": r1_hist,
+                    "R2": r2_hist
+                })
+                logger.log({
+                    "r1_mean": th.mean(vit.CP_R1.cpu()),
+                    "r2_mean": th.mean(vit.CP_R2.cpu())
+                })
+                logger.log({
+                    "r1_std": th.std(vit.CP_R1.cpu()),
+                    "r2_std": th.std(vit.CP_R2.cpu())
+                })
             x, y = batch[0].cuda(), batch[1].cuda()
             out = model(x)
             loss = th.nn.functional.cross_entropy(out, y)
@@ -38,6 +54,7 @@ def train(args, model, dl, tdl, opt, sched, epochs):
             sched.step(epoch)
         # Add accuracy calculation here
         if epoch % 50 == 0 and epoch != 0:
+            sched = None
             acc = test(model, tqdm(tdl))
             if log:
                 logger.log({"val_acc": acc[1]})
@@ -193,7 +210,7 @@ def cp_attn(self, x):
     tensor_proj = tl.cp_to_tensor((vit.CP_R2, (p1, vit.CP_P2, vit.CP_P3)))
     AA, AB, AC = tensor_proj.shape
     tensor_proj = tensor_proj.reshape((AA*AB, AC))
-    proj_delta = x@self.dp(tensor_proj.T)
+    proj_delta = x@self.dp(tensor_proj.T) + vit.CP_bias1
     proj += proj_delta * self.s
     x = self.proj_drop(proj)
     return x
@@ -208,7 +225,7 @@ def cp_mlp(self, x):
     tensor_up = tl.cp_to_tensor((vit.CP_R2, (p1_up, vit.CP_P2, vit.CP_P3)))
     AA, AB, AC = tensor_up.shape
     tensor_up = tensor_up.reshape((AA*AB, AC))
-    up_delta = x@self.dp(tensor_up.T)
+    up_delta = x@self.dp(tensor_up.T) + vit.CP_bias2
     up += up_delta * self.s
 
     x = self.act(up)
@@ -218,13 +235,13 @@ def cp_mlp(self, x):
     # down_delta = mlp_down_forward((p1_down, vit.CP_P2, vit.CP_P3), x, self.dp)
     tensor_down = tl.cp_to_tensor((vit.CP_R2, (p1_down, vit.CP_P2, vit.CP_P3)))
     tensor_down = tensor_down.reshape((AA*AB, AC))
-    down_delta = x@self.dp(tensor_down)
+    down_delta = x@self.dp(tensor_down) + vit.CP_bias3
     down += down_delta * self.s
     x = self.drop(down)
     return x
 
 
-def set_CP(model, dim=9, s=1):
+def set_CP(model, dim, s, l_mu, l_std):
     if type(model) == timm.models.vision_transformer.VisionTransformer:
         model.CP_A1 = nn.Parameter(th.empty([36, dim]), requires_grad=True)
         model.CP_A2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
@@ -235,6 +252,10 @@ def set_CP(model, dim=9, s=1):
         model.CP_P3 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
         model.CP_R1 = nn.Parameter(th.empty([dim], requires_grad=True))
         model.CP_R2 = nn.Parameter(th.empty([dim], requires_grad=True))
+
+        model.CP_bias1 = nn.Parameter(th.empty([768]), requires_grad=True)
+        model.CP_bias2 = nn.Parameter(th.empty([768*4]), requires_grad=True)
+        model.CP_bias3 = nn.Parameter(th.empty([768]), requires_grad=True)
         
         nn.init.xavier_normal_(model.CP_A1)
         nn.init.zeros_(model.CP_A2)
@@ -244,8 +265,16 @@ def set_CP(model, dim=9, s=1):
         nn.init.zeros_(model.CP_P2)
         nn.init.orthogonal_(model.CP_P3)
 
-        nn.init.ones_(model.CP_R1)
-        nn.init.ones_(model.CP_R2)
+        if l_std != 0.0:
+            nn.init.normal_(model.CP_R1, mean=l_mu, std=l_std)
+            nn.init.normal_(model.CP_R2, mean=l_mu, std=l_std)
+        elif l_mu == 1.0 and l_std == 0.0:
+            nn.init.ones_(model.CP_R1)
+            nn.init.ones_(model.CP_R2)
+
+        nn.init.zeros_(model.CP_bias1)
+        nn.init.zeros_(model.CP_bias2)
+        nn.init.zeros_(model.CP_bias3)
 
         model.idx = 0
         model.attn_idx = 0
@@ -269,7 +298,7 @@ def set_CP(model, dim=9, s=1):
             bound_method = cp_mlp.__get__(child, child.__class__)
             setattr(child, "forward", bound_method)
         elif len(list(child.children())) != 0:
-            set_CP(child, dim, s)
+            set_CP(child, dim, s, l_mu, l_std)
 
 def _parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
@@ -280,40 +309,51 @@ def _parse_args():
         help="Number of trainable ranks."
     )
     parser.add_argument(
-        "--s",
-        default=100,
-        type=float,
-        help="Scale for CP form"
-    )
-    parser.add_argument(
         "--lr",
         default=1e-3,
         type=float,
         help="Learning rate"
     )
+    parser.add_argument(
+        "--dataset",
+        default="svhn",
+        type=str,
+        choices=["cifar", "caltech101", "clevr_count", "clevr_dist", "diabetic_retinopathy",
+                 "dmlab", "dsprites_loc", "dtd", "eurosat", "kitti", "oxford_flowers102",
+                 "oxford_iiit_pets", "patch_camelyon", "resic45", "smallnorb_azi",
+                 "smallnorb_ele", "sun397", "svhn"],
+        help="Dataset to train"
+    )
     parser.add_argument('--model', type=str, default='vit_base_patch16_224_in21k')
     return parser.parse_args()
 
 
-def main():
+def main(sd):
     global logger, log
-    log = False
-    # np.random.seed(hash("improves reproducibility") % 2**32 - 1)
-    # torch.manual_seed(hash("by removing stochasticity") % 2**32 - 1)
-    # torch.cuda.manual_seed_all(hash("so runs are repeatable") % 2**32 - 1)
-    np.random.seed(84)
-    random.seed(84)
-    th.manual_seed(84)
-    th.cuda.manual_seed_all(84)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
     args = _parse_args()
     print(args)
-    name = "svhn"
+    name = args.dataset
+    
+    data_config = config[name]
+    # seed = data_config["seed"]
+    seed = sd
+    scale = data_config["scale"]
+    log = data_config["logger"]
+    lambda_mean = data_config["init_mean"]
+    lambda_std = data_config["init_std"]
+
+    print(f"\n\nSeed: {seed}")
+    np.random.seed(seed)
+    random.seed(seed)
+    th.manual_seed(seed)
+    th.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
     
     if log:
-        run_name = f"LR_{args.lr}-Scale_{args.s}-Rank_{args.dim}"
+        run_name = f"LR__{name}__{args.lr}-Scale_{scale}-Rank_{args.dim}_test"
         logger = wandb.init(project="Fact-CP", name=run_name)
         logger.config.update(args)
 
@@ -322,7 +362,7 @@ def main():
     global vit
     vit = create_model(args.model, checkpoint_path="./ViT-B_16.npz", drop_path_rate=0.1)
     # vit = th.nn.DataParallel(vit)
-    set_CP(vit, dim=args.dim, s=args.s)
+    set_CP(vit, dim=args.dim, s=scale, l_mu=lambda_mean, l_std=lambda_std)
     trainable = []
     vit.reset_classifier(num_classes)
     total_param = 0
@@ -334,6 +374,7 @@ def main():
         else:
             p.requires_grad = False
     print(f"Total parameters: {total_param}")
+    print(vit.head)
     optimizer = th.optim.AdamW(trainable, lr=args.lr, weight_decay=1e-4)
     scheduler = None
     scheduler = CosineLRScheduler(optimizer, t_initial=100, warmup_t=10, lr_min=1e-5, warmup_lr_init=1e-6, decay_rate=0.1)
@@ -342,10 +383,18 @@ def main():
     _, test_dl = get_data(name, evaluate=True)
     acc = test(vit, tqdm(test_dl))
     print(f"Accuracy: {acc[1]}")
-    th.save(vit.state_dict(), f"./vit_svhn_{acc[1]}.pt")
+    th.save(vit.state_dict(), f"./vit_{name}_{round(acc[1], 5)}_seed_{seed}.pt")
     if log:
         logger.log({"final_acc": acc[1]})
         wandb.finish()
 
 if __name__ == "__main__":
-    main()
+    # for i in range(0, 25):
+    #     main(i)
+    # for i in range(25, 50):
+    #     main(i)
+    # for i in range(50, 75):
+    #     main(i)
+    for i in range(75, 100):
+        main(i)
+    # main()

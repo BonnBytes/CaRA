@@ -74,7 +74,8 @@ class ImageFilelist(data.Dataset):
 
 
 def get_data(name, evaluate=True, batch_size=64):
-    root = './data/' + name
+    root = './vtab-1k/' + name
+    print(f"Getting data from root: {root}")
     transform = transforms.Compose([
         transforms.Resize((224, 224), interpolation=3), # Change to 224 for ViTB
         transforms.ToTensor(),
