@@ -14,14 +14,14 @@ config = {
         "logger": False
     },
     "dtd": {
-        "init_mean": 1.7,
-        "init_std": 0.15,
-        "scale": 0.01,
-        "seed": 14,
-        "logger": True
+        
     },
     "oxford_flowers102": {
-
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 1,
+        "seed": 84,
+        "logger": True
     },
     "oxford_iiit_pet": {
 
@@ -61,13 +61,17 @@ config = {
 
     },
     "dsprites_loc": {
-
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 100,
+        "seed": 67,
+        "logger": False
     },
     "smallnorb_azi": {
         "init_mean": 1.0,
         "init_std": 0.0,
         "scale": 100,
-        "seed": 56,
+        "seed": 67,
         "logger": False
     },
     "smallnorb_ele": {

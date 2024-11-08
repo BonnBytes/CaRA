@@ -328,7 +328,7 @@ def _parse_args():
     return parser.parse_args()
 
 
-def main(sd):
+def main(sd = None):
     global logger, log
 
     args = _parse_args()
@@ -336,8 +336,10 @@ def main(sd):
     name = args.dataset
     
     data_config = config[name]
-    # seed = data_config["seed"]
-    seed = sd
+    if sd is None:
+        seed = data_config["seed"]
+    else:
+        seed = sd
     scale = data_config["scale"]
     log = data_config["logger"]
     lambda_mean = data_config["init_mean"]
@@ -395,6 +397,6 @@ if __name__ == "__main__":
     #     main(i)
     # for i in range(50, 75):
     #     main(i)
-    for i in range(75, 100):
-        main(i)
-    # main()
+    # for i in range(75, 100):
+    #     main(i)
+    main()
