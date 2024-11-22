@@ -9,17 +9,21 @@ from vtab import *
 from vtab_config import config
 import timm
 import random
+import os
 import wandb
 from timm.scheduler import CosineLRScheduler
 import tensorly as tl
 tl.set_backend("pytorch")
 
+best_acc = 0.0
 
 def train(args, model, dl, tdl, opt, sched, epochs):
     model.train()
     model = model.cuda()
-    acc = [0., 0.]
+    acc = 0.
     idx = 0
+    global old_name
+    old_name = None
     for epoch in (pbar:=tqdm(range(epochs))):
     # for epoch in range(epochs):
         if log:
@@ -49,15 +53,22 @@ def train(args, model, dl, tdl, opt, sched, epochs):
             idx += 1
             if log:
                 logger.log({"loss":loss.item()})
-            pbar.set_description(f"e: {epoch}, l: {round(loss.item(), 7)}, a:{acc[1]}")
-        if sched is not None:
-            sched.step(epoch)
+            pbar.set_description(f"e: {epoch}, l: {round(loss.item(), 7)}, a:{acc}")
+            if sched is not None:
+                sched.step(epoch)
         # Add accuracy calculation here
-        if epoch % 50 == 0 and epoch != 0:
+        if epoch % 5 == 0 and epoch != 0 and epoch >= 50:
             sched = None
-            acc = test(model, tqdm(tdl))
+            acc = test(model, tdl)[1]
+            if acc > args.best_acc:
+                args.best_acc = acc
+                if old_name is not None:
+                    os.remove(old_name)
+                old_name = f"./vit_{args.dataset}_{round(acc, 5)}_seed_{args.seed}.pt"
+                th.save(vit.state_dict(), old_name)
             if log:
-                logger.log({"val_acc": acc[1]})
+                logger.log({"val_acc": acc})
+            # model.train()
             # print(f"Epoch: {epoch}, Accuracy: {acc}")
     model = model.cpu()
     return model
@@ -320,7 +331,7 @@ def _parse_args():
         type=str,
         choices=["cifar", "caltech101", "clevr_count", "clevr_dist", "diabetic_retinopathy",
                  "dmlab", "dsprites_loc", "dtd", "eurosat", "kitti", "oxford_flowers102",
-                 "oxford_iiit_pets", "patch_camelyon", "resic45", "smallnorb_azi",
+                 "oxford_iiit_pet", "patch_camelyon", "resisc45", "smallnorb_azi",
                  "smallnorb_ele", "sun397", "svhn"],
         help="Dataset to train"
     )
@@ -344,6 +355,8 @@ def main(sd = None):
     log = data_config["logger"]
     lambda_mean = data_config["init_mean"]
     lambda_std = data_config["init_std"]
+    args.best_acc = 0.0
+    args.seed = seed
 
     print(f"\n\nSeed: {seed}")
     np.random.seed(seed)
@@ -383,12 +396,13 @@ def main(sd = None):
     vit = train(args, vit, train_dl, test_dl, optimizer, scheduler, epochs=100)
     print("\n\n Evaluating....")
     _, test_dl = get_data(name, evaluate=True)
-    acc = test(vit, tqdm(test_dl))
-    print(f"Accuracy: {acc[1]}")
-    th.save(vit.state_dict(), f"./vit_{name}_{round(acc[1], 5)}_seed_{seed}.pt")
-    if log:
-        logger.log({"final_acc": acc[1]})
-        wandb.finish()
+    acc = test(vit, tqdm(test_dl))[1]
+    if acc > args.best_acc:
+        args.best_acc = acc
+        os.remove(old_name)
+        th.save(vit.state_dict(), f"./vit_{name}_{round(args.best_acc, 5)}_seed_{seed}.pt")
+    
+    print(f"Accuracy: {args.best_acc}")
 
 if __name__ == "__main__":
     # for i in range(0, 25):
@@ -397,6 +411,6 @@ if __name__ == "__main__":
     #     main(i)
     # for i in range(50, 75):
     #     main(i)
-    # for i in range(75, 100):
-    #     main(i)
-    main()
+    for i in range(75, 100):
+        main(i)
+    # main()
