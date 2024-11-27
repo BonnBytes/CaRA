@@ -129,7 +129,7 @@ class VitWrapper(nn.Module):
 
         param_prod_fun = lambda t: np.prod(t.shape)
 
-        cp_fun = tl.decomposition.CP(32, init='random', normalize_factors=False)
+        cp_fun = tl.decomposition.CP(args.ranks, init='random', normalize_factors=False)
         factors = cp_fun.fit_transform(parameter_tensor_re)
         params = sum(factors.weights.shape) + sum(map(param_prod_fun, factors.factors))
         print(f"Parameter count: {params}.")
@@ -139,8 +139,9 @@ class VitWrapper(nn.Module):
 
         factors.factors[-1] = factors.factors[-1]*0. 
         self.weights = th.nn.Parameter(torch.ones_like(factors.weights), requires_grad=True)
-        self.factors = torch.nn.ParameterList([th.nn.Parameter(f_vecs, requires_grad=True) for f_vecs in factors.factors])
-        breakpoint()
+        self.factors = torch.nn.ParameterList([th.nn.Parameter(f_vecs, requires_grad=True)
+                                               for f_vecs in factors.factors])
+        # breakpoint()
         pass
 
     def restore_parameter_tensor(self):
@@ -161,7 +162,6 @@ class VitWrapper(nn.Module):
                 bound_method = mod_forward.__get__(mod, mod.__class__)
                 setattr(mod, "forward", bound_method)
 
-
         return self.vit(x)
 
 
@@ -170,10 +170,16 @@ class VitWrapper(nn.Module):
 def _parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        "--dim",
+        "--ranks",
         default=32,
         type=int,
-        help="Number of trainable ranks."
+        help="Number of trainable CP-ranks."
+    )
+    parser.add_argument(
+        "--dims",
+        default=5,
+        type=int,
+        help="The number of CP-Factors"
     )
     parser.add_argument(
         "--lr",
@@ -198,6 +204,7 @@ def _parse_args():
 def main(sd = None):
     global logger, log
 
+    global args
     args = _parse_args()
     print(args)
     name = args.dataset
@@ -242,7 +249,7 @@ def main(sd = None):
 
     print(f"vit_head: {vit.head}.")
     
-    vit = VitWrapper(vit, 5)
+    vit = VitWrapper(vit, args.dims)
     vit.cuda()
 
     # for n, p in vit.named_parameters():
