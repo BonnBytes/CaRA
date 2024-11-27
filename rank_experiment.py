@@ -89,7 +89,7 @@ def test(model, dl):
 
 def mod_forward(self, x: torch.Tensor) -> torch.Tensor:
     B, N, C = x.shape
-    x_out = x@self.qkv_tuned.T + self.qkv.bias 
+    x_out = x@self.qkv_tuned.T + self.qkv.bias
     qkv = x_out.reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
     q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
 
@@ -123,17 +123,22 @@ class VitWrapper(nn.Module):
         if cp_summand_length < len(self.stack_shape):
             parameter_tensor_re = torch.reshape(parameter_tensor,
                                                 [-1] + list(self.stack_shape[-cp_summand_length:]) )
+            breakpoint()
         else:
             parameter_tensor_re = parameter_tensor
 
         param_prod_fun = lambda t: np.prod(t.shape)
 
-        cp_fun = tl.decomposition.CP(32, init='random', normalize_factors=True)
+        cp_fun = tl.decomposition.CP(32, init='random', normalize_factors=False)
         factors = cp_fun.fit_transform(parameter_tensor_re)
         params = sum(factors.weights.shape) + sum(map(param_prod_fun, factors.factors))
         print(f"Parameter count: {params}.")
 
-        self.weights = th.nn.Parameter(factors.weights, requires_grad=True)
+        for fact in factors.factors:
+            nn.init.xavier_normal_(fact)
+
+        factors.factors[-1] = factors.factors[-1]*0. 
+        self.weights = th.nn.Parameter(torch.ones_like(factors.weights), requires_grad=True)
         self.factors = torch.nn.ParameterList([th.nn.Parameter(f_vecs, requires_grad=True) for f_vecs in factors.factors])
 
     def restore_parameter_tensor(self):
@@ -156,8 +161,6 @@ class VitWrapper(nn.Module):
 
 
         return self.vit(x)
-
-
 
 
 
@@ -230,15 +233,20 @@ def main(sd = None):
     # vit = th.nn.DataParallel(vit)
     # set_CP(vit, dim=args.dim, s=scale, l_mu=lambda_mean, l_std=lambda_std)
     vit.reset_classifier(num_classes)
-    total_param = 0
-    for _, p in vit.named_parameters():
+
+    for p in vit.parameters():
         p.requires_grad = False
     
-    print(f"Total parameters: {total_param}")
-    print(vit.head)
+
+    print(f"vit_head: {vit.head}.")
     
     vit = VitWrapper(vit, 5)
     vit.cuda()
+
+    # for n, p in vit.named_parameters():
+    #     if 'bias' in n:
+    #         p.requires_grad = True
+
     optimizer = th.optim.AdamW(vit.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = None
     scheduler = CosineLRScheduler(optimizer, t_initial=100, warmup_t=10,
