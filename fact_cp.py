@@ -380,6 +380,7 @@ def main(sd = None):
     set_CP(vit, dim=args.dim, s=scale, l_mu=lambda_mean, l_std=lambda_std)
     trainable = []
     vit.reset_classifier(num_classes)
+    # vit.load_state_dict(th.load("./vit_caltech101_0.91915_seed_56.pt"))
     total_param = 0
     for n, p in vit.named_parameters():
         if "CP" in n or "head" in n:
@@ -397,6 +398,7 @@ def main(sd = None):
     print("\n\n Evaluating....")
     _, test_dl = get_data(name, evaluate=True)
     acc = test(vit, tqdm(test_dl))[1]
+    print(acc)
     if acc > args.best_acc:
         args.best_acc = acc
         os.remove(old_name)
@@ -405,12 +407,12 @@ def main(sd = None):
     print(f"Accuracy: {args.best_acc}")
 
 if __name__ == "__main__":
-    # for i in range(0, 25):
+    # for i in range(35, 50):
     #     main(i)
     # for i in range(25, 50):
     #     main(i)
-    # for i in range(50, 75):
+    # for i in range(83, 100):
     #     main(i)
-    for i in range(75, 100):
-        main(i)
-    # main()
+    # for i in range(75, 100):
+    #     main(i)
+    main()

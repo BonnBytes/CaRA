@@ -66,7 +66,7 @@ config = {
         "init_mean": 1.16,
         "init_std": 0.03,
         "scale": 10,
-        "seed": 0,
+        "seed": 28,
         "logger": False
     },
     "diabetic_retinopathy": {
@@ -76,19 +76,34 @@ config = {
         "init_mean": 1.0,  # 1.06
         "init_std": 0.0,  # 0.025
         "scale": 5,         # 10 - 82.5
-        "seed": 0,          # 0
+        "seed": 44,          # 0
         "logger": False
     },
     "clevr_dist": {
 
     },
     "dmlab": {
-
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 10,
+        "seed": 0,
+        "logger": False
     },
     "kitti": {
-
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 5,
+        "seed": 44,
+        "logger": False
     },
     "dsprites_loc": {
+        "init_mean": 0.98,
+        "init_std": 0.02,
+        "scale": 50,
+        "seed": 0,
+        "logger": False
+    },
+    "dsprites_ori": {
 
     },
     "smallnorb_azi": {
@@ -98,6 +113,11 @@ config = {
         "seed": 67,
         "logger": False
     },
-    "smallnorb_ele": {    
+    "smallnorb_ele": { 
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 100,
+        "seed": 0,
+        "logger": False   
     }
 }
