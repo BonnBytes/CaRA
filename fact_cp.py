@@ -192,8 +192,8 @@ def cp_attn(self, x):
     #  Convert 4D to 2D
     tensor_attn = tl.cp_to_tensor((vit.CP_R1, (f1, vit.CP_A2, vit.CP_A3, vit.CP_A4)))
     K, E, H, D = tensor_attn.shape
-    tensor_attn = tensor_attn.reshape((K, E, H*D)).swapaxes(-2, -1)
-    qkv_delta = th.einsum("bnd, ked->kbne", x, self.dp(tensor_attn))
+    tensor_attn = tensor_attn.reshape((K, E, H*D))#.swapaxes(-2, -1)
+    qkv_delta = th.einsum("bnd, kde->kbne", x, self.dp(tensor_attn))
     qkv_delta = qkv_delta.reshape(3, B, N, self.num_heads, C//self.num_heads).permute(
         0, 1, 3, 2, 4
     )
