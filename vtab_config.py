@@ -42,8 +42,8 @@ config = {
         "logger": False
     },
     "sun397": { # Dropout: 0.3
-        "init_mean": 1.35, # 1.35
-        "init_std": 0.06, # 0.06
+        "init_mean": 1.35,
+        "init_std": 0.06, 
         "scale": 1.0,
         "seed": 43, 
         "logger": False
@@ -66,30 +66,57 @@ config = {
         "init_mean": 1.16,
         "init_std": 0.03,
         "scale": 10,
-        "seed": 0,
+        "seed": 28,
         "logger": False
     },
-    "diabetic_retinopathy": {
-
+    "diabetic_retinopathy": { # dropout 0.3
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 0.1,
+        "seed": 81,
+        "logger": False
     },
     "clevr_count": {
-        "init_mean": 1.0,  # 1.06
-        "init_std": 0.0,  # 0.025
-        "scale": 5,         # 10 - 82.5
-        "seed": 0,          # 0
+        "init_mean": 1.0,   
+        "init_std": 0.0,    
+        "scale": 5,         
+        "seed": 44,          
         "logger": False
     },
-    "clevr_dist": {
-
+    "clevr_dist": {   # dropout 0.3
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 2.5,
+        "seed": 25,
+        "logger": False
     },
     "dmlab": {
-
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 10,
+        "seed": 72,
+        "logger": False
     },
     "kitti": {
-
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 5,
+        "seed": 31,
+        "logger": False
     },
     "dsprites_loc": {
-
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 50,
+        "seed": 12,
+        "logger": False
+    },
+    "dsprites_ori": {        # Dropout: 0.3  
+        "init_mean": 1.3,
+        "init_std": 0.07,
+        "scale": 1.0,
+        "seed": 79,
+        "logger": False
     },
     "smallnorb_azi": {
         "init_mean": 1.0,
@@ -98,6 +125,11 @@ config = {
         "seed": 67,
         "logger": False
     },
-    "smallnorb_ele": {    
+    "smallnorb_ele": { #  Dropout: 0.3
+        "init_mean": 1.0,
+        "init_std": 0.0,
+        "scale": 10.0,
+        "seed": 30,
+        "logger": False
     }
 }

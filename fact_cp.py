@@ -81,7 +81,7 @@ def test(model, dl):
     # ex = []
     acc = Accuracy()
     model = model.cuda()
-    for batch in dl:
+    for batch in tqdm(dl):
         x, y = batch[0].cuda(), batch[1].cuda()
         out = model(x).data
         acc.update(out.argmax(dim=1).view(-1), y, 1)
@@ -332,7 +332,7 @@ def _parse_args():
         choices=["cifar", "caltech101", "clevr_count", "clevr_dist", "diabetic_retinopathy",
                  "dmlab", "dsprites_loc", "dtd", "eurosat", "kitti", "oxford_flowers102",
                  "oxford_iiit_pet", "patch_camelyon", "resisc45", "smallnorb_azi",
-                 "smallnorb_ele", "sun397", "svhn"],
+                 "smallnorb_ele", "sun397", "svhn", "dsprites_ori"],
         help="Dataset to train"
     )
     parser.add_argument('--model', type=str, default='vit_base_patch16_224_in21k')
@@ -380,6 +380,7 @@ def main(sd = None):
     set_CP(vit, dim=args.dim, s=scale, l_mu=lambda_mean, l_std=lambda_std)
     trainable = []
     vit.reset_classifier(num_classes)
+    # vit.load_state_dict(th.load("./vit_caltech101_0.91915_seed_56.pt"))
     total_param = 0
     for n, p in vit.named_parameters():
         if "CP" in n or "head" in n:
@@ -396,7 +397,8 @@ def main(sd = None):
     vit = train(args, vit, train_dl, test_dl, optimizer, scheduler, epochs=100)
     print("\n\n Evaluating....")
     _, test_dl = get_data(name, evaluate=True)
-    acc = test(vit, tqdm(test_dl))[1]
+    acc = test(vit, test_dl)[1]
+    print(acc)
     if acc > args.best_acc:
         args.best_acc = acc
         os.remove(old_name)
@@ -405,12 +407,4 @@ def main(sd = None):
     print(f"Accuracy: {args.best_acc}")
 
 if __name__ == "__main__":
-    # for i in range(0, 25):
-    #     main(i)
-    # for i in range(25, 50):
-    #     main(i)
-    # for i in range(50, 75):
-    #     main(i)
-    for i in range(75, 100):
-        main(i)
-    # main()
+    main()

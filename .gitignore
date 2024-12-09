@@ -166,3 +166,4 @@ data/
 *.pt
 
 vtab-1k/
+wandb/
