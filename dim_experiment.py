@@ -186,23 +186,30 @@ def mlp_down_forward(factors, input_, dropout=None):
 def cp_attn(self, x):
     B, N, C = x.shape
     qkv = self.qkv(x)
-    f1 = vit.CP_A1[self.attn_idx:self.attn_idx+3, :]
-    # # 4D Implementation - Memory expensive
-    # qkv_delta = attn_thunder_forward((f1, vit.CP_A2, vit.CP_A3, vit.CP_A4), x, self.dp)
-    #  Convert 4D to 2D
-    tensor_attn = tl.cp_to_tensor((vit.CP_R1, (f1, vit.CP_A2, vit.CP_A3, vit.CP_A4)))
-    K, E, H, D = tensor_attn.shape
-    tensor_attn = tensor_attn.reshape((K, E, H*D))#.swapaxes(-2, -1)
+    if vit.cp_l == 5:
+        f1 = vit.CP_A1[self.attn_idx:self.attn_idx+1, :]
+        tensor_attn = tl.cp_to_tensor((vit.CP_R1, (f1, vit.CP_A2, vit.CP_A3, vit.CP_A4, vit.CP_A5)))
+        tensor_attn = tensor_attn.squeeze()
+        K, E, H, D = tensor_attn.shape
+        tensor_attn = tensor_attn.reshape((K, E, H*D))#.swapaxes(-2, -1)      
+    elif vit.cp_l == 4:
+        f1 = vit.CP_A1[self.attn_idx:self.attn_idx+3, :]
+        tensor_attn = tl.cp_to_tensor((vit.CP_R1, (f1, vit.CP_A2, vit.CP_A3, vit.CP_A4)))
+        K, E, H, D = tensor_attn.shape
+        tensor_attn = tensor_attn.reshape((K, E, H*D))#.swapaxes(-2, -1)
+    elif vit.cp_l == 3:
+        f1 = vit.CP_A1[self.attn_idx:self.attn_idx+3, :]
+        tensor_attn = tl.cp_to_tensor((vit.CP_R1, (f1, vit.CP_A2, vit.CP_A3)))
+    elif vit.cp_l == 2:
+        f1 = vit.CP_A1[self.attn_idx:self.attn_idx+3, :]
+        tensor_attn = tl.cp_to_tensor((vit.CP_R1, (f1, vit.CP_A2)))
+        K, EHD = tensor_attn.shape
+        tensor_attn = tensor_attn.reshape((K, C, C))
+
     qkv_delta = th.einsum("bnd, kde->kbne", x, self.dp(tensor_attn))
     qkv_delta = qkv_delta.reshape(3, B, N, self.num_heads, C//self.num_heads).permute(
         0, 1, 3, 2, 4
     )
-    # tensor_attn = tensor_attn.permute(1, 0, 2)
-    # tensor_attn = tensor_attn.reshape((tensor_attn.shape[0], -1))
-    # qkv_delta = x @ self.dp(tensor_attn)
-    # qkv_delta = qkv_delta.reshape(B, N, 3, self.num_heads, C//self.num_heads).permute(
-    #     2, 0, 3, 1, 4
-    # )
     qkv = qkv.reshape(B, N, 3, self.num_heads, C//self.num_heads).permute(
         2, 0, 3, 1, 4
     )
@@ -252,12 +259,41 @@ def cp_mlp(self, x):
     return x
 
 
-def set_CP(model, dim, s, l_mu, l_std):
+def set_CP(model, dim, s, l_mu, l_std, cp_length):
     if type(model) == timm.models.vision_transformer.VisionTransformer:
-        model.CP_A1 = nn.Parameter(th.empty([36, dim]), requires_grad=True)
-        model.CP_A2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
-        model.CP_A3 = nn.Parameter(th.empty([12, dim]), requires_grad=True)
-        model.CP_A4 = nn.Parameter(th.empty([768//12, dim]), requires_grad=True)
+        if cp_length == 5:
+            model.CP_A1 = nn.Parameter(th.empty([12, dim]), requires_grad=True)
+            model.CP_A2 = nn.Parameter(th.empty([3, dim]), requires_grad=True)
+            model.CP_A3 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
+            model.CP_A4 = nn.Parameter(th.empty([12, dim]), requires_grad=True)
+            model.CP_A5 = nn.Parameter(th.empty([768//12, dim]), requires_grad=True)
+            nn.init.xavier_normal_(model.CP_A1)
+            nn.init.orthogonal_(model.CP_A2)
+            nn.init.zeros_(model.CP_A3)
+            nn.init.orthogonal_(model.CP_A4)
+            nn.init.orthogonal_(model.CP_A5)
+        elif cp_length == 4:
+            model.CP_A1 = nn.Parameter(th.empty([36, dim]), requires_grad=True)
+            model.CP_A2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
+            model.CP_A3 = nn.Parameter(th.empty([12, dim]), requires_grad=True)
+            model.CP_A4 = nn.Parameter(th.empty([768//12, dim]), requires_grad=True)
+            nn.init.xavier_normal_(model.CP_A1)
+            nn.init.zeros_(model.CP_A2)
+            nn.init.orthogonal_(model.CP_A3)
+            nn.init.orthogonal_(model.CP_A4)
+        elif cp_length == 3:
+            model.CP_A1 = nn.Parameter(th.empty([36, dim]), requires_grad=True)
+            model.CP_A2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
+            model.CP_A3 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
+            nn.init.xavier_normal_(model.CP_A1)
+            nn.init.zeros_(model.CP_A2)
+            nn.init.orthogonal_(model.CP_A3)
+        elif cp_length == 2:
+            model.CP_A1 = nn.Parameter(th.empty([36, dim]), requires_grad=True)
+            model.CP_A2 = nn.Parameter(th.empty([768*768, dim]), requires_grad=True)
+            nn.init.xavier_normal_(model.CP_A1)
+            nn.init.zeros_(model.CP_A2)
+            
         model.CP_P1 = nn.Parameter(th.empty([108, dim]), requires_grad=True)
         model.CP_P2 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
         model.CP_P3 = nn.Parameter(th.empty([768, dim]), requires_grad=True)
@@ -268,10 +304,7 @@ def set_CP(model, dim, s, l_mu, l_std):
         model.CP_bias2 = nn.Parameter(th.empty([768*4]), requires_grad=True)
         model.CP_bias3 = nn.Parameter(th.empty([768]), requires_grad=True)
         
-        nn.init.xavier_normal_(model.CP_A1)
-        nn.init.zeros_(model.CP_A2)
-        nn.init.orthogonal_(model.CP_A3)
-        nn.init.orthogonal_(model.CP_A4)
+        
         nn.init.xavier_normal_(model.CP_P1)
         nn.init.zeros_(model.CP_P2)
         nn.init.orthogonal_(model.CP_P3)
@@ -289,6 +322,7 @@ def set_CP(model, dim, s, l_mu, l_std):
 
         model.idx = 0
         model.attn_idx = 0
+        model.cp_l = cp_length
     for child in model.children():
         if type(child) == timm.models.vision_transformer.Attention:
             child.dp = nn.Dropout(0.1)
@@ -297,7 +331,7 @@ def set_CP(model, dim, s, l_mu, l_std):
             child.idx = vit.idx
             child.attn_idx = vit.attn_idx
             vit.idx += 1
-            vit.attn_idx += 3
+            vit.attn_idx += 1 if cp_length == 5 else 3
             bound_method = cp_attn.__get__(child, child.__class__)
             setattr(child, "forward", bound_method)
         elif type(child) == timm.models.layers.mlp.Mlp:
@@ -309,15 +343,21 @@ def set_CP(model, dim, s, l_mu, l_std):
             bound_method = cp_mlp.__get__(child, child.__class__)
             setattr(child, "forward", bound_method)
         elif len(list(child.children())) != 0:
-            set_CP(child, dim, s, l_mu, l_std)
+            set_CP(child, dim, s, l_mu, l_std, cp_length)
 
 def _parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        "--dim",
+        "--ranks",
         default=32,
         type=int,
         help="Number of trainable ranks."
+    )
+    parser.add_argument(
+        "--dims",
+        default=4,
+        type=int,
+        help="Number of CP Factors."
     )
     parser.add_argument(
         "--lr",
@@ -377,7 +417,7 @@ def main(sd = None):
     global vit
     vit = create_model(args.model, checkpoint_path="./ViT-B_16.npz", drop_path_rate=0.1)
     # vit = th.nn.DataParallel(vit)
-    set_CP(vit, dim=args.dim, s=scale, l_mu=lambda_mean, l_std=lambda_std)
+    set_CP(vit, dim=args.ranks, s=scale, l_mu=lambda_mean, l_std=lambda_std, cp_length=args.dims)
     trainable = []
     vit.reset_classifier(num_classes)
     # vit.load_state_dict(th.load("./vit_caltech101_0.91915_seed_56.pt"))
