@@ -1,47 +1,13 @@
-CP form of LoRA, evaluation on VTAB-1K dataset.
+# Canonical Decomposition and Approximation
+Perform finetuning using Canonical Polyadic Decomposition
 
-Inspirations:
+## Image Classification
+We use VisionTransformer-B/16 evaluated on VTAB-1k datasets.
+Please refer to ```image_classification``` folder for the experiments.
 
-1. FacT: [Code](https://github.com/JieShibo/PETL-ViT/tree/main/FacT)
-2. GLoRA: [Code](https://github.com/Arnav0400/ViT-Slim/tree/master/GLoRA)
-3. NOAH: [Code](https://github.com/ZhangYuanhan-AI/NOAH)
+## Commonsense Reasoning
+We use LLAMA-7B evaluated on eight commonsense reasoning tasks.
+Please refer to ```commonsense_reasoning``` folder for the experiments.
 
-
-### Set up:
-Follow the steps as described over at `https://github.com/JieShibo/PETL-ViT/tree/main/FacT`.
-Additionally run
-``` bash
-pip install tqdm
-pip install tensorly
-```
-
-### Running experiments
-To run an experiment type:
-
-``` bash
-python fact_cp.py --dataset 'dataset_name'
-```
-
-Choose a dataset name from i.e. '
-
-``` bash
-caltech101 
-clevr_dist           
-dsprites_loc  
-eurosat
-oxford_iiit_pet 
-smallnorb_azi
-cifar      
-diabetic_retinopathy 
-dsprites_ori
-kitti
-patch_camelyon
-smallnorb_ele
-clevr_count
-dmlab                
-dtd
-oxford_flowers102
-resisc45
-sun397
-svhn
-```
+## Image/Video-Text Understanding
+We plan use VL-BART evaluated on variety of datasets for Image and video text understanding.
