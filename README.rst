@@ -25,6 +25,12 @@ We are commited to providing thoroughly tested and well-packaged code.
 The code will be soon released once the process is completed. 
 
 
+Acknowledgments
+===============
+The code is built on the implementation of `FacT <https://github.com/JieShibo/PETL-ViT/tree/main/FacT>`__. Thanks to `Zahra Ganji <https://github.com/ZahraGanji>` for reimplementing VeRA baseline.
+
+
+
 .. |License| image:: https://img.shields.io/badge/License-Apache_2.0-blue.svg
    :target: https://opensource.org/licenses/Apache-2.0
 .. |Project| image:: https://img.shields.io/badge/Project-Website-blue
