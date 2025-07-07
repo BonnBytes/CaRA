@@ -27,7 +27,7 @@ The code will be soon released once the process is completed.
 
 Acknowledgments
 ===============
-The code is built on the implementation of `FacT <https://github.com/JieShibo/PETL-ViT/tree/main/FacT>`__. Thanks to `Zahra Ganji <https://github.com/ZahraGanji>` for reimplementing VeRA baseline.
+The code is built on the implementation of `FacT <https://github.com/JieShibo/PETL-ViT/tree/main/FacT>`__. Thanks to `Zahra Ganji <https://github.com/ZahraGanji>`__ for reimplementing VeRA baseline.
 
 
 
