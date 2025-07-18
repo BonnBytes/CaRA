@@ -1,0 +1,94 @@
+[project]
+name = "cara"
+version = "0.1.0"
+description = "[ICML2025] Canonical Rank Adaptation"
+readme = "README.md"
+requires-python = "==3.8.20"
+dependencies = [
+    "avalanche-lib==0.3.0",
+    "matplotlib==3.7.5",
+    "numpy==1.24.4",
+    "tensorly==0.8.1",
+    "timm==0.4.12",
+    "tqdm==4.66.6",
+]
+
+
+[project.optional-dependencies]
+cpu = [
+  "torch==2.0.0",
+  "torchvision==0.15",
+]
+cu118 = [
+  "torch==2.0.0",
+  "torchvision==0.15",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cu118" },
+  ],
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu118", extra = "cu118" },
+]
+torchvision = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu118", extra = "cu118" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+priority = "primary"
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+
+[tool.isort]
+profile = "black"
+py_version = 38
+
+[tool.black]
+line-length = 79
+target-version = ['py38']
+
+[tool.mypy]
+python_version = "3.8.20"  # or your target Python version
+install_types = true
+non_interactive = true
+ignore_missing_imports = true
+strict_optional = false
+warn_return_any = false
+implicit_reexport = true
+allow_untyped_calls = true
+explicit_package_bases = true
+
+[dependency-groups]
+dev = [
+    "black",
+    "darglint",
+    "flake8",
+    "flake8-black",
+    "flake8-broken-line",
+    "flake8-bugbear",
+    "flake8-docstrings",
+    "isort",
+    "mypy",
+    "pep8-naming",
+    "pre-commit",
+    "pydocstyle",
+    "types-pyyaml",
+    "types-requests",
+    "types-simplejson",
+    "types-tabulate",
+]
