@@ -87,6 +87,7 @@ dev = [
     "pep8-naming",
     "pre-commit",
     "pydocstyle",
+    "pytest>=8.3.5",
     "types-pyyaml",
     "types-requests",
     "types-simplejson",
