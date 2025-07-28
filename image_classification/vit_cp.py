@@ -8,6 +8,7 @@ from vtab import *
 from vtab_config import config
 import random
 import os
+import sys
 import wandb
 from timm.scheduler import CosineLRScheduler
 
@@ -53,9 +54,10 @@ def train(args, model, dl, tdl, opt, sched, epochs):
             pbar.set_description(f"e: {epoch}, l: {round(loss.item(), 7)}, a:{acc}")
             if sched is not None:
                 sched.step(epoch)
-        if epoch % 5 == 0 and epoch != 0 and epoch >= 50:
-            sched = None
-            acc = test(model, tdl)[1]
+        if epoch % 10 == 0 and epoch != 0:
+            if epoch >= 50:
+                sched = None
+            acc = test(model, tdl)
             if acc > args.best_acc:
                 args.best_acc = acc
                 if old_name is not None:
@@ -76,7 +78,7 @@ def test(model, dl):
     for batch in tqdm(dl):
         x, y = batch[0].cuda(), batch[1].cuda()
         out = model(x).data
-        acc.update(out.argmax(dim=1).view(-1), y, 1)
+        acc.update(out.argmax(dim=1).view(-1), y)
     return acc.result()
 
 
@@ -103,6 +105,12 @@ def _parse_args():
                  "oxford_iiit_pet", "patch_camelyon", "resisc45", "smallnorb_azi",
                  "smallnorb_ele", "sun397", "svhn", "dsprites_ori"],
         help="Dataset to train"
+    )
+    parser.add_argument(
+        "--evaluate",
+        default=None,
+        type=str,
+        help="Evalute model only"
     )
     parser.add_argument('--model', type=str, default='vit_base_patch16_224_in21k')
     return parser.parse_args()
@@ -153,8 +161,17 @@ def main(sd = None):
         "l_std": lambda_std
         }
     vit = cara(cara_config)
+
     trainable = []
     vit.reset_classifier(num_classes)
+
+    if args.evaluate is not None:
+        print("Only evaluation")
+        vit.load_state_dict(th.load(args.evaluate))
+        acc = test(vit, test_dl)
+        print(f"Accuracy: {acc}")
+        sys.exit(0)
+
     total_param = 0
     for n, p in vit.named_parameters():
         if "CP" in n or "head" in n:
@@ -171,7 +188,7 @@ def main(sd = None):
     vit = train(args, vit, train_dl, test_dl, optimizer, scheduler, epochs=100)
     print("\n\n Evaluating....")
     _, test_dl = get_data(name, evaluate=True)
-    acc = test(vit, test_dl)[1]
+    acc = test(vit, test_dl)
     print(acc)
     if acc > args.best_acc:
         args.best_acc = acc
@@ -179,6 +196,7 @@ def main(sd = None):
         th.save(vit.state_dict(), f"./vit_{name}_{round(args.best_acc, 5)}_seed_{seed}.pt")
     
     print(f"Accuracy: {args.best_acc}")
+
 
 if __name__ == "__main__":
     main()
