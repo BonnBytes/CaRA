@@ -19,7 +19,7 @@ Gall <https://pages.iai.uni-bonn.de/gall_juergen/>`__\ :sup:`1,3`
 **Abstract:** Modern methods for fine-tuning a Vision Transformer (ViT) like Low-Rank Adaptation (LoRA) and its variants demonstrate impressive performance. However, these methods ignore the high-dimensional nature of Multi-Head Attention (MHA) weight tensors. To address this limitation, we propose Canonical Rank Adaptation (CaRA). CaRA leverages tensor mathematics, first by tensorising the transformer into two different tensors; one for projection layers in MHA and the other for feed-forward layers. Second, the tensorised formulation is fine-tuned using the low-rank adaptation in Canonical-Polyadic Decomposition (CPD) form. Employing CaRA efficiently minimizes the number of trainable parameters. Experimentally, CaRA outperforms existing Parameter-Efficient Fine-Tuning (PEFT) methods in visual classification benchmarks such as Visual Task Adaptation Benchmark (VTAB)-1k and Fine-Grained Visual Categorization (FGVC).
 
 
-.. image:: https://raw.githubusercontent.com/BonnBytes/CaRA/refs/heads/dev/images/tensorisation.jpg
+.. image:: https://raw.githubusercontent.com/BonnBytes/CaRA/refs/heads/main/images/tensorisation.jpg
    :width: 100%
    :alt: Alternative text
 
