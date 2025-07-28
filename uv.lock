@@ -138,6 +138,7 @@ dependencies = [
     { name = "tensorly" },
     { name = "timm" },
     { name = "tqdm" },
+    { name = "wandb" },
 ]
 
 [package.optional-dependencies]
@@ -187,6 +188,7 @@ requires-dist = [
     { name = "torchvision", marker = "extra == 'cpu'", specifier = "==0.15", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "cara", extra = "cpu" } },
     { name = "torchvision", marker = "extra == 'cu118'", specifier = "==0.15", index = "https://download.pytorch.org/whl/cu118", conflict = { package = "cara", extra = "cu118" } },
     { name = "tqdm", specifier = "==4.66.6" },
+    { name = "wandb", specifier = ">=0.21.0" },
 ]
 provides-extras = ["cpu", "cu118"]
 

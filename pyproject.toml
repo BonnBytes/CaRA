@@ -11,6 +11,7 @@ dependencies = [
     "tensorly==0.8.1",
     "timm==0.4.12",
     "tqdm==4.66.6",
+    "wandb>=0.21.0",
 ]
 
 
