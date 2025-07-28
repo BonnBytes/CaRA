@@ -55,3 +55,10 @@ def test_cara_lambda_init():
     vit = cara(_get_cara_config())
     assert th.allclose(vit.CP_R1, th.ones_like(vit.CP_R1))
     assert th.allclose(vit.CP_R2, th.ones_like(vit.CP_R2))
+
+
+def test_cara_forward():
+    vit = _get_vit()
+    dummy_input = th.randn((2, 3, 224, 224))
+    output = vit(dummy_input)
+    assert np.allclose(list(output.shape), (2, 21843))
