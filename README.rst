@@ -12,7 +12,7 @@ Gall <https://pages.iai.uni-bonn.de/gall_juergen/>`__\ :sup:`1,3`
 |
 
 
-|License| |CodeStyle| |Workflow| |Arxiv|  |Project|
+|License|  |CodeStyle|  |Workflow|  |Arxiv|  |Project|
 
 **Keywords:** CaRA, Canonical Polyadic Decomposition, CPD, Tensor methods, ViT, LoRA 
 
