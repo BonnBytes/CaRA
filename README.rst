@@ -80,6 +80,19 @@ Acknowledgments
 The code is built on the implementation of `FacT <https://github.com/JieShibo/PETL-ViT/tree/main/FacT>`__. Thanks to `Zahra Ganji <https://github.com/ZahraGanji>`__ for reimplementing VeRA baseline.
 
 
+Citation
+========
+If you use this work, please cite using following bibtex entry
+
+.. code-block::
+
+   @inproceedings{
+   veeramacheneni2025canonical,
+   title={Canonical Rank Adaptation: An Efficient Fine-Tuning Strategy for Vision Transformers},
+   author={Lokesh Veeramacheneni and Moritz Wolter and Hilde Kuehne and Juergen Gall},
+   booktitle={Forty-second International Conference on Machine Learning},
+   year={2025}}
+
 
 .. |License| image:: https://img.shields.io/badge/License-Apache_2.0-blue.svg
    :target: https://opensource.org/licenses/Apache-2.0
